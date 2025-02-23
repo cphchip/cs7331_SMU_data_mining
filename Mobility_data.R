@@ -1,26 +1,21 @@
 library("tidyverse")
-
 library("ggplot2")
-library("ggrepel")
-library("ggcorrplot")
-library("DT")
 
+# Import the initial mobility dataset
 mobility_df <- read_csv("Global_Mobility_Report.csv")
 str(mobility_df)
 
-# mobility_df <- mobility_df %>% mutate_if(is.character, factor)
+# Convert the chr features to factors
+mobility_df <- mobility_df %>% mutate_if(is.character, factor)
 dim(mobility_df)
 
 summary(mobility_df)
 
-# There's 14 columns and 3991405 instances
-
-# unique(df$country_region)
-# sort(table(df$country_region), decreasing = TRUE)
+# There's 14 columns and 3,991,405 instances
 
 # The Sub-country specific data may be of value, but there's a ton of it and 
 # it's complicating processing so I'm going to drop it for now
-filtered_df <- mobility_df %>%
+mobility_df <- mobility_df %>%
   select(
     country_region, 
     date, 
@@ -32,13 +27,8 @@ filtered_df <- mobility_df %>%
   )
 
 # This is a helper df to look at the data in smaller subsets
-country <- filtered_df %>%
-  filter(country_region == 'United States')
-
-# Shows the unique number of occurrences of the dates found in the dataframe
-# There are a ton of entries for each date depending on the country.
-sort(table(country$date), decreasing = TRUE)
-
+country <- mobility_df %>%
+  filter(country_region == 'Sweden')
 
 # Now the trick is, across all these countries, how do we combine these to be 
 # single lines per country. They're all percentages, so averaging might be 
@@ -52,7 +42,7 @@ sort(table(country$date), decreasing = TRUE)
 summarize_df <- function(df) { # code help from ChaptGPT
   new_df <- df %>%
       group_by(country_region, date) %>%  # Group by the 'date' column
-        summarise(
+        summarize(
           avg_retail = mean(retail_and_recreation_percent_change_from_baseline, na.rm = TRUE),
           avg_parks = mean(parks_percent_change_from_baseline, na.rm = TRUE),
           avg_transit = mean(transit_stations_percent_change_from_baseline, na.rm = TRUE),
@@ -62,28 +52,18 @@ summarize_df <- function(df) { # code help from ChaptGPT
       return(new_df)
 }
 
+# Capture the features to plot for easy reference
+features_to_plot <- c(
+  "avg_retail", 
+  "avg_parks",
+  "avg_transit",
+  "avg_workplaces",
+  "avg_residential"
+  )
+
+
 mobility_df_rollup <- summarize_df(filtered_df)
-str(mobility_df_rollup)
-
-# country <- "United States"
-# USA <- mobility_df_rollup %>%
-#   filter(country_region == country)
-# 
-# ggplot(USA, aes(x = date, y = avg_retail)) +
-#   geom_line() +
-#   geom_smooth() +
-#   labs(
-#     title = paste("avg retail over time ", country),
-#        x = "Date",
-#        y = "Percent Change"
-#      )
-
-# This is good, but still a ton of data if I did this for each country. So I'm
-# going to try and downselect by random sampling.
-
-
-
-
+dim(mobility_df_rollup)
 
 # Another piece of data to pull in would be the population of each country.
 # I can use a Kaggle dataset 
@@ -100,17 +80,48 @@ population_df <- population_df %>%
     `2020 Population`
   )
 
-str(population_df)
-
-
-mobility_df_rollup <- mobility_df_rollup %>%
-  mutate(country_region = as.character(country_region))
-
-str(mobility_df_rollup)
-
+# Join the population dataset to my mobility dataset using the country name
 mobility_df_rollup <- left_join(
   mobility_df_rollup, 
   population_df, 
   by = c('country_region' = 'Country/Territory')
   )
 head(mobility_df_rollup)
+
+# Grab a random 5 countries to study
+# unique_sample <- sample(unique(mobility_df_rollup$country_region),5)
+# unique_sample
+
+# This is good, but still a ton of data if I did this for each country. So I'm
+# going to try and downselect by random sampling.
+# country_subset_df <- filter(mobility_df_rollup, country_region %in% unique_sample)
+# head(country_subset_df)
+
+country_plots <- function(country, df) { # ChatGPT assisted
+  # Filter dataframe for the selected country
+  country_df <- df %>% filter(country_region == country)
+  
+  # Get numeric column names
+  numeric_features <- df %>%
+    select(features_to_plot) %>%
+    colnames()
+  
+  # Iterate over numeric feature names
+  for (feature in numeric_features) {
+    plot <- ggplot(country_df, aes(x = date, y = .data[[feature]])) +
+    geom_line() +
+    geom_smooth() +
+    labs(
+      title = paste(country, " - ", feature),
+      x = "Date",
+      y = "Percent Change"
+    )
+    print(plot)  # Ensure plots are displayed when running in a function
+    }
+}
+
+# for (country in unique_sample) {
+#   country_plots(country, country_subset_df)
+#   }
+
+country_plots("Sweden", mobility_df_rollup)
