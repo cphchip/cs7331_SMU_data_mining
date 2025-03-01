@@ -15,20 +15,37 @@ summary(mobility_df)
 
 # The Sub-country specific data may be of value, but there's a ton of it and 
 # it's complicating processing so I'm going to drop it for now
-mobility_df <- mobility_df %>%
-  select(
-    country_region, 
-    date, 
-    retail_and_recreation_percent_change_from_baseline,
-    parks_percent_change_from_baseline,
-    transit_stations_percent_change_from_baseline,
-    workplaces_percent_change_from_baseline,
-    residential_percent_change_from_baseline
-  )
 
-# This is a helper df to look at the data in smaller subsets
-country <- mobility_df %>%
-  filter(country_region == 'Sweden')
+# Function to filter down to data of interest and drop unnecessary features
+filter_data <- function(data, interest) {
+  data_of_interest <- data %>%
+    select(
+      country_region, 
+      sub_region_1,
+      date, 
+      retail_and_recreation_percent_change_from_baseline,
+      parks_percent_change_from_baseline,
+      transit_stations_percent_change_from_baseline,
+      workplaces_percent_change_from_baseline,
+      residential_percent_change_from_baseline
+    ) %>% 
+    filter(country_region == interest) %>%
+    
+  return(data_of_interest)
+}
+
+
+sweden_data <- filter_data(mobility_df, 'Sweden') %>%
+  select(-sub_region_1)
+
+# Since we're comparing Texas to Sweden, I'll just call the country Texas here
+texas_data <- filter_data(mobility_df, 'United States') %>%
+  mutate(country_region = 'Texas') %>%
+  select(-sub_region_1)
+
+
+
+
 
 # Now the trick is, across all these countries, how do we combine these to be 
 # single lines per country. They're all percentages, so averaging might be 
@@ -52,6 +69,13 @@ summarize_df <- function(df) { # code help from ChaptGPT
       return(new_df)
 }
 
+# mobility_df_rollup <- summarize_df(mobility_df)
+# dim(mobility_df_rollup)
+texas_data <- summarize_df(texas_data)
+sweden_data <- summarize_df(sweden_data)
+
+# data_of_interet = summarize_df(data_of_interest)
+
 # Capture the features to plot for easy reference
 features_to_plot <- c(
   "avg_retail", 
@@ -60,10 +84,6 @@ features_to_plot <- c(
   "avg_workplaces",
   "avg_residential"
   )
-
-
-mobility_df_rollup <- summarize_df(filtered_df)
-dim(mobility_df_rollup)
 
 # Another piece of data to pull in would be the population of each country.
 # I can use a Kaggle dataset 
@@ -81,25 +101,26 @@ population_df <- population_df %>%
   )
 
 # Join the population dataset to my mobility dataset using the country name
-mobility_df_rollup <- left_join(
-  mobility_df_rollup, 
+sweden_data <- left_join(
+  sweden_data, 
   population_df, 
   by = c('country_region' = 'Country/Territory')
   )
-head(mobility_df_rollup)
+head(sweden_data)
 
-# Grab a random 5 countries to study
-# unique_sample <- sample(unique(mobility_df_rollup$country_region),5)
-# unique_sample
+#' Since my dataset for population is by country, I'll use another data source
+#' to get the 2020 populataion of Texas. A census was taken in 2020, so I'll
+#' use https://www.census.gov/data/tables/2020/dec/2020-apportionment-data.html.
+#' Texas had a population of 29,183,290.
 
-# This is good, but still a ton of data if I did this for each country. So I'm
-# going to try and downselect by random sampling.
-# country_subset_df <- filter(mobility_df_rollup, country_region %in% unique_sample)
-# head(country_subset_df)
+texas_data <- mutate(texas_data, '2020 Population' = 29183290)
 
-country_plots <- function(country, df) { # ChatGPT assisted
+# Now we can join the back together
+data_of_interest <- bind_rows(texas_data, sweden_data)
+
+country_plots <- function(df) { # ChatGPT assisted
   # Filter dataframe for the selected country
-  country_df <- df %>% filter(country_region == country)
+  # country_df <- df %>% filter(country_region == country)
   
   # Get numeric column names
   numeric_features <- df %>%
@@ -108,20 +129,18 @@ country_plots <- function(country, df) { # ChatGPT assisted
   
   # Iterate over numeric feature names
   for (feature in numeric_features) {
-    plot <- ggplot(country_df, aes(x = date, y = .data[[feature]])) +
-    geom_line() +
-    geom_smooth() +
+    plot <- ggplot(df, aes(x = date, y = .data[[feature]], color=country_region)) +
+    # geom_line() +
+    geom_smooth(se = FALSE) +
+      scale_color_manual(values = c("Texas" = "orange", "Sweden" = "darkblue")) +
     labs(
-      title = paste(country, " - ", feature),
+      title = paste("Texas vs Sweden - ", feature),
       x = "Date",
-      y = "Percent Change"
+      y = "Percent Change",
+      color = "Location"
     )
     print(plot)  # Ensure plots are displayed when running in a function
     }
 }
 
-# for (country in unique_sample) {
-#   country_plots(country, country_subset_df)
-#   }
-
-country_plots("Sweden", mobility_df_rollup)
+country_plots(data_of_interest)
