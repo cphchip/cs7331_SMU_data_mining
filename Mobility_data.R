@@ -1,6 +1,12 @@
 library("tidyverse")
 library("ggplot2")
 
+#' Per the data website https://www.google.com/covid19/mobility/index.html, the 
+#' mobility data "reports charted movement trends over time by geography, 
+#' across different categories of places such as retail and recreation, 
+#' groceries and pharmacies, parks, transit stations, workplaces, and 
+#' residential."
+
 # Import the initial mobility dataset
 mobility_df <- read_csv("Global_Mobility_Report.csv")
 str(mobility_df)
@@ -30,9 +36,12 @@ filter_data <- function(data, interest) {
       residential_percent_change_from_baseline
     ) %>% 
     filter(country_region == interest) %>%
+    drop_na(sub_region_1)
     
   return(data_of_interest)
 }
+
+
 
 
 sweden_data <- filter_data(mobility_df, 'Sweden') %>%
@@ -65,9 +74,11 @@ summarize_df <- function(df) { # code help from ChaptGPT
           avg_transit = mean(transit_stations_percent_change_from_baseline, na.rm = TRUE),
           avg_workplaces = mean(workplaces_percent_change_from_baseline, na.rm = TRUE),
           avg_residential = mean(residential_percent_change_from_baseline, na.rm = TRUE)
-        )
+        ) %>% ungroup()
       return(new_df)
 }
+
+
 
 # mobility_df_rollup <- summarize_df(mobility_df)
 # dim(mobility_df_rollup)
@@ -144,3 +155,28 @@ country_plots <- function(df) { # ChatGPT assisted
 }
 
 country_plots(data_of_interest)
+
+
+
+# Reshape data to long format
+data_of_interest_long <- data_of_interest %>%
+  pivot_longer(cols = all_of(features_to_plot), 
+               names_to = "Feature", 
+               values_to = "Value")
+
+# Create the faceted plot
+plot <- ggplot(data_of_interest_long, aes(x = date, y = Value, color = country_region)) +
+  geom_smooth(se = FALSE) +
+  scale_color_manual(values = c("Texas" = "orange", "Sweden" = "darkblue")) +
+  labs(
+    title = "Texas vs Sweden - Mobility Trends",
+    x = "Date",
+    y = "Percent Change",
+    color = "Location"
+  ) +
+  facet_wrap(~ Feature, scales = "free_y") +  # Create separate plots for each feature
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis labels
+
+print(plot)  # Ensure the plot is displayed
+
+
