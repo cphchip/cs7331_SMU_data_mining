@@ -25,7 +25,8 @@ census_subset <- census_cases_df %>%
     masters_degree,
     bachelors_degree,
     high_school_diploma,
-    one_year_more_college
+    one_year_more_college,
+    gini_index
   )
 
 #' Aggregate the data at the US State level. 
@@ -46,7 +47,8 @@ census_summary_df <- census_subset %>%
     state_total_masters_degree = sum(masters_degree, na.rm = TRUE),
     state_total_bachelors_degree = sum(bachelors_degree, na.rm = TRUE),
     state_total_high_school_diploma = sum(high_school_diploma, na.rm = TRUE),
-    state_total_one_year_more_college = sum(one_year_more_college, na.rm = TRUE)
+    state_total_one_year_more_college = sum(one_year_more_college, na.rm = TRUE),
+    state_avg_gini_index = mean(gini_index, na.rm = TRUE)
 ) %>% ungroup()
 
 # Import the mobility dataset
@@ -190,7 +192,8 @@ histogram_features <- c(
   "state_total_masters_degree",
   "state_total_bachelors_degree",
   "state_total_high_school_diploma",
-  "state_total_one_year_more_college"
+  "state_total_one_year_more_college",
+  "state_avg_gini_index"
 )
 
 for (feature in histogram_features) {
