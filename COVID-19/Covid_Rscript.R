@@ -11,18 +11,43 @@ census_data <- read_csv("COVID-19_cases_plus_census.csv")
 #' Contains snapshot of cases and deaths on Jan 19 2021
 
 # Lets just filter based on Texas since we also have covid set for texas only
-census_data <- census_data %>% filter(state== "TX")
+# also remove the logical field, they are blank in the actual census report
+# drop all rows with missing elements
+census_tx <- census_data %>% 
+  filter(state== "TX") %>%
+  select(where(~ !is.logical(.))) %>%
+  na.omit(census_tx)
+  
+# save the county names, confirmed cases, and deaths
+county_names <- census_tx$county_name
+county_cases <- census_tx$confirmed_cases
+county_deaths <- census_tx$deaths
+county_total_pop <- census_tx$total_pop
 
-# extract county names
-county_names <- census_data$county_name
-
-# remove non-numerical columns and remove confirmed cases and death
-census_numeric <- census_data %>% 
+# remove non-numeric and specific columns
+census_numeric <- census_tx %>%
   select(where(is.numeric)) %>%
-  na.omit(census_numeric) %>%
   select(-confirmed_cases) %>%
   select(-deaths) %>%
   select(-do_date)
+
+# save a copy of census_numeric
+og_census_numeric <- census_numeric
+
+############### reset point ##################
+census_numeric <- og_census_numeric
+
+summary(census_numeric)
+
+# select features of interest
+cols_to_select <- c("male_pop","female_pop")
+census_numeric <- census_numeric %>%
+  select(all_of(cols_to_select))
+
+summary(census_numeric)
+census_numeric
+
+set.seed(1015)
 
 # kmean clustering on data
 # Using the Elbow Method to determine the best number of clusters
@@ -42,10 +67,46 @@ ggplot(df, aes(x=k_values,y=wss)) +
   labs(title="WSS vs Number of Clusters", x="Number of Clusters (k)",y="Sum of Squares") +
   theme_minimal()
 
-# based on the graph, the best number for k is 4. Now create perform k means cluster
-kmeans_result <- kmeans(census_numeric, centers = 4)
+# based on the graph, the best number for k is 3. Now create perform k means cluster
+kmeans_result <- kmeans(census_numeric, centers = 3)
 census_numeric$cluster <- as.factor(kmeans_result$cluster)
+census_numeric$confirmed_cases <- county_cases
+census_numeric$total_pop <- county_total_pop
 
+summary(census_numeric)
+ 
+ggplot(census_numeric, aes(x=census_numeric$male_pop, 
+                           y=census_numeric$female_pop, 
+                           color=census_numeric$cluster)) +
+  geom_point(size = 3)
+
+census_numeric$county_name <- county_names
+
+cluster3 <- census_numeric %>% filter(cluster == 3)
+cluster1 <- census_numeric %>% filter(cluster == 1)
+cluster2 <- census_numeric %>% filter(cluster == 2)
+
+cluster1$confirmed_cases_percent <- cluster1$confirmed_cases / cluster1$total_pop
+cluster2$confirmed_cases_percent <- cluster2$confirmed_cases / cluster2$total_pop
+cluster3$confirmed_cases_percent <- cluster3$confirmed_cases / cluster3$total_pop
+
+
+size <- c(2340,3250,2350,2674)
+cluster2$size <- size
+cluster2$pop_den <- cluster2$total_pop / cluster2$size
+
+cluster2
+
+print(cluster1)
+print(cluster2)
+print(cluster3)
+print(max(cluster3$confirmed_cases_percent))
+print(min(cluster3$confirmed_cases_percent))
+
+
+
+
+# Only use this section if there are more than two dimensions
 # Since there are multiple dimensions we cannot display a visualization of the
 # clusters without performing a dimension reduction technique
 
@@ -69,7 +130,6 @@ ggplot(df_tsne, aes(x = X1, y = X2, color = cluster)) +
   theme_minimal()
 
 # umap (Uniform Manifold Approximation and Projection)
-install.packages("umap")
 library(umap)
 umap_result <- umap(census_numeric[,-241])
 df_umap <- data.frame(umap_result$layout, cluster = as.factor(census_numeric$cluster))
@@ -78,6 +138,7 @@ ggplot(df_umap, aes(x = X1, y = X2, color = cluster)) +
   geom_point(size = 3) +
   labs(title = "UMAP Visualization of Clusters") +
   theme_minimal()
+##########
 
 # Count the number of counties in each cluster
 number_in_1 <- nrow(census_numeric %>% filter(cluster==1))
@@ -88,6 +149,22 @@ number_in_3 <- nrow(census_numeric %>% filter(cluster==3))
 print(number_in_3)
 number_in_4 <- nrow(census_numeric %>% filter(cluster==4))
 print(number_in_4)
+
+
+# add back the names, cases, and death 
+census_numeric$county_name <- county_names
+census_numeric$confirmed_cases <- county_cases
+census_numeric$deaths <- county_deaths
+
+#lets take a look at one of the clusters (which ever is the largest)
+census_cluster<- census_numeric %>% filter(cluster == 3)
+
+summary(census_cluster)
+boxplot(census_cluster$confirmed_cases, 
+        main="Boxplot of Confirmed cases in Cluster",
+        ylab = "Values",
+        col = "lightblue",
+        border = "blue")
 
 #' important variables
 #' 1) County Name
@@ -157,3 +234,6 @@ create_barChart_cases_death <- function(county_data)
 }
 
 create_barChart_cases_death(williamson)
+
+# What county did the best and why low pop density, better mobility stats?
+# 
