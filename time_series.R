@@ -5,11 +5,8 @@ library("GGally")
 # Import the Texas cases dataset
 texas_time_series_df <- read_csv("COVID-19_cases_TX.csv")
 
-texas_plot <- ggplot(texas_time_series_df, aes(x=date, y=confirmed_cases)) +
-  geom_point()
-
-print(texas_plot)
-
+#' We'll select a subset of data for the COVID-19_cases_TX dataset, and remove
+#' anything that didn't have a county attributed to it.
 texas_clean_df <- texas_time_series_df %>%
   select(
     county_name,
@@ -37,10 +34,9 @@ mobility3_df <- left_join(
 )
 
 
-#' The mobility data contains "District of Columbia" which isn't in the census
-#' data. Therefore I'm going to drop those instances. I'm also going to pare 
-#' back the data to some specific features and drop_NA from sub_region_1 and 
-#' sub_region_2.
+#' To pare down the mobility dataset I'll select a subset of features. I'll 
+#' also filter for United States and the state of Texas because that's all
+#' my Covid-19 cases datasaet contains. Finally, I'll drop any NA values.
 mobility_3_subset_df <- mobility3_df %>%
   select(
     country_region, 
@@ -61,18 +57,12 @@ mobility_3_subset_df <- mobility3_df %>%
   drop_na(sub_region_1, sub_region_2)
 
 
-#' The join function here needs to be linked to county but also to date. There
-#' are more date datapoints in the texas clean data than there are in the mobility
-#' 3 subset data. I could aggregate these by months...or weeks?
-
-
+#' To make the two datasets join without significant NA's I'll create a function
+#' to aggregate the date data at the week level.
 library(lubridate)
-
-
-# Aggregate by week (starting on Monday)
 date_aggregator <- function(df) {
   df_weekly <- df %>%
-    mutate(week = floor_date(date, unit = "week", week_start = 1))
+    mutate(week = floor_date(date, unit = "week", week_start = 1)) %>%
   
   return(df_weekly)
 }
@@ -80,6 +70,7 @@ date_aggregator <- function(df) {
 weekly_texas_clean_df <- date_aggregator(texas_clean_df)
 weekly_mobility_df <- date_aggregator(mobility_3_subset_df)
 
+# Join the two datasets
 time_series_df <- left_join(
   mobility_3_subset_df,
   texas_clean_df,
@@ -89,10 +80,13 @@ time_series_df <- left_join(
   )
 )
 
+# Ensure any lingering NAs are removed
 time_series_df <- time_series_df %>% drop_na()
 
-time_series_aggregate_df <- time_series_df %>%
-    group_by(sub_region_2, date) %>%  # Group by the 'date' column
+# Create a function to help with aggregating the features by county and date
+aggregate_mobility <- function(df) {
+  aggregate_df <- df %>%
+    group_by(sub_region_2, date) %>%
     summarize(
       avg_retail = mean(retail_and_recreation_percent_change_from_baseline, na.rm = TRUE),
       avg_grocery_and_pharmacy = mean(grocery_and_pharmacy_percent_change_from_baseline, na.rm = TRUE),
@@ -102,10 +96,15 @@ time_series_aggregate_df <- time_series_df %>%
       avg_residential = mean(residential_percent_change_from_baseline, na.rm = TRUE),
       total_confirmed_cases = sum(confirmed_cases, na.rm = TRUE),
       total_deaths = sum(deaths, na.rm = TRUE)
-    ) %>%
+    ) %>% 
     ungroup()
+  
+  return(aggregate_df)
+}
 
+time_series_aggregate_df <- aggregate_mobility(time_series_df)
 
+# We'll start by looking at some correlation data
 # All Texas counties correlation with deaths and confirmed cases
 all_tx_counties_corr <- time_series_aggregate_df %>%
   select(
@@ -123,6 +122,7 @@ all_tx_counties_corr <- time_series_aggregate_df %>%
 
 ggcorrplot(all_tx_counties_corr)
 
+# Vector to store some of our features, will make it easier to refer to them
 mobility_variables <- c(
   "avg_retail",
   "avg_grocery_and_pharmacy",
@@ -132,18 +132,61 @@ mobility_variables <- c(
   "avg_workplaces"
 )
 
+#' Function to plot mobility data between two counties. This was helpful when 
+#' needing to compare various counties to find those of interest without having
+#' to repeat code.
+plot_county_mobility <- function(county1, county2, df) {
+  data_of_interest <- df %>%
+    filter(sub_region_2 == county1 | sub_region_2 == county2) %>%
+    pivot_longer(
+      cols = all_of(mobility_variables),
+      names_to = "Feature",
+      values_to = "Value"
+      )
+  
+  plot <- ggplot(data_of_interest, aes(x = date, y = Value, color = sub_region_2)) +
+    geom_smooth(se = FALSE) +
+    scale_color_manual(values = setNames(c("orange", "darkblue"), c(county1, county2))) +
+    labs(
+      title = paste(county1, "vs", county2, "- Mobility Trends"),
+      x = "Date",
+      y = "Percent Change",
+      color = "Location"
+    ) +
+    facet_wrap(~ Feature, scales = "free_y") # Create separate plots for each feature
+    # theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis labels
+  
+  print(plot)
+}
 
-# 
-# time_series_long_df <- time_series_aggregate_df %>%
-#   pivot_longer(cols = all_of(mobility_variables), 
-#                names_to = "Feature", 
-#                values_to = "Percent Change")
-# 
-# ggplot(time_series_aggregate_df, aes(x = date, y = total_confirmed_cases)) +
-#   geom_smooth(se = FALSE)
-# 
-# plot <- ggplot(time_series_long_df, aes(x = date, y = "Percent Change", color=sub_region_2)) +
-#   geom_smooth(se = FALSE) +
-# facet_wrap(~ Feature, scales = "free_y") 
-# 
-# print(plot)
+plot_county_mobility("Dallas County", "Harris County", time_series_aggregate_df)
+plot_county_mobility("Tarrant County", "Bexar County", time_series_aggregate_df)
+
+
+#' Similar function for plotting cases and deaths
+plot_county_confirmed_cases <- function(county1, county2, df) {
+  data_of_interest <- df %>%
+    filter(sub_region_2 == county1 | sub_region_2 == county2) %>%
+    pivot_longer(
+      cols = c(total_confirmed_cases, total_deaths),
+      names_to = "Features",
+      values_to = "Value"
+    )
+  
+  plot <- ggplot(data_of_interest, aes(x = date, y = Value, color = sub_region_2)) +
+    geom_smooth(se = FALSE) +
+    scale_color_manual(values = setNames(c("orange", "darkblue"), c(county1, county2))) +
+    labs(
+      title = paste(county1, "vs", county2, "- Confirmed Cases"),
+      x = "Date",
+      y = "Count",
+      color = "Location"
+    ) +
+    facet_wrap(~ Features, scales = "free_y")  # Create separate plots for each feature
+    # theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis labels
+  
+  print(plot)
+}
+
+plot_county_confirmed_cases("Tarrant County", "Bexar County", time_series_aggregate_df)
+
