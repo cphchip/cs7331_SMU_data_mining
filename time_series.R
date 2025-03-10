@@ -102,6 +102,8 @@ aggregate_mobility <- function(df) {
   return(aggregate_df)
 }
 
+
+
 time_series_aggregate_df <- aggregate_mobility(time_series_df)
 
 # We'll start by looking at some correlation data
@@ -159,7 +161,7 @@ plot_county_mobility <- function(county1, county2, df) {
   print(plot)
 }
 
-plot_county_mobility("Dallas County", "Harris County", time_series_aggregate_df)
+# plot_county_mobility("Dallas County", "Harris County", time_series_aggregate_df)
 plot_county_mobility("Tarrant County", "Bexar County", time_series_aggregate_df)
 
 

@@ -50,3 +50,6 @@ rsconnect/
 
 # Ignore csv files
 *.csv
+
+# Ignore the graduate portion
+project_1_graduate.*
