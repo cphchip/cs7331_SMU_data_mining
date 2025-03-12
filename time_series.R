@@ -33,7 +33,6 @@ mobility3_df <- left_join(
   by = c('sub_region_1' = 'State')
 )
 
-
 #' To pare down the mobility dataset I'll select a subset of features. I'll 
 #' also filter for United States and the state of Texas because that's all
 #' my Covid-19 cases datasaet contains. Finally, I'll drop any NA values.
@@ -102,9 +101,9 @@ aggregate_mobility <- function(df) {
   return(aggregate_df)
 }
 
-
-
 time_series_aggregate_df <- aggregate_mobility(time_series_df)
+summary(time_series_aggregate_df) %>% as.data.frame() %>% write_clip()
+
 
 # We'll start by looking at some correlation data
 # All Texas counties correlation with deaths and confirmed cases
@@ -161,7 +160,6 @@ plot_county_mobility <- function(county1, county2, df) {
   print(plot)
 }
 
-# plot_county_mobility("Dallas County", "Harris County", time_series_aggregate_df)
 plot_county_mobility("Tarrant County", "Bexar County", time_series_aggregate_df)
 
 
@@ -185,7 +183,6 @@ plot_county_confirmed_cases <- function(county1, county2, df) {
       color = "Location"
     ) +
     facet_wrap(~ Features, scales = "free_y")  # Create separate plots for each feature
-    # theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis labels
   
   print(plot)
 }
