@@ -72,10 +72,7 @@ texas_state_census_df <- texas_state_census_df %>%
     -female_65_and_over
     )
 
-install.packages("clipr")
-library(clipr)
 summary(texas_state_census_df)
-summary(texas_state_census_df) %>% as.data.frame() %>% write_clip()
 
 features_of_interest <- c(
   "confirmed_cases",
@@ -194,3 +191,6 @@ ggplot(corr_long, aes(x = Correlation, y = Race, color = Correlation)) +
        x = "Correlation Strength",
        y = "Demographic",
        color = "Correlation")
+
+
+head(texas_state_census_df,10)

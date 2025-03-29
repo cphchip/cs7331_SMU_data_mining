@@ -1,6 +1,7 @@
-library("tidyverse")
-library("ggplot2")
-library("GGally")
+library(tidyverse)
+library(ggplot2)
+library(GGally)
+library(ggcorrplot)
 
 # Import the Texas cases dataset
 texas_time_series_df <- read_csv("COVID-19_cases_TX.csv")
@@ -102,8 +103,6 @@ aggregate_mobility <- function(df) {
 }
 
 time_series_aggregate_df <- aggregate_mobility(time_series_df)
-summary(time_series_aggregate_df) %>% as.data.frame() %>% write_clip()
-
 
 # We'll start by looking at some correlation data
 # All Texas counties correlation with deaths and confirmed cases
@@ -189,3 +188,4 @@ plot_county_confirmed_cases <- function(county1, county2, df) {
 
 plot_county_confirmed_cases("Tarrant County", "Bexar County", time_series_aggregate_df)
 
+head(time_series_aggregate_df,10)
