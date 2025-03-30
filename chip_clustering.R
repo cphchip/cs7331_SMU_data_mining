@@ -39,6 +39,9 @@ texas_state_census_df <- census_cases_df %>%
   ) %>%
   filter(state == "TX")
 
+texas_state_census_df <- texas_state_census_df %>% mutate(across(where(is.character), factor))
+dim(texas_state_census_df)
+
 #' We know covid disproportionately affected the elderly. I'd like an idea of 
 #' just how prevalent elderly populations were, so I'm going to combine some 
 #' features.
@@ -116,7 +119,8 @@ ggplot(counties_polygon_TX, aes(long, lat)) +
   scale_fill_continuous(type = "viridis") +
   labs(title = "Texas death rates by county")
 
-
+#' Scale our data. Clustering algorithms use distances and the variables with 
+#' the largest number range will dominate distance calculation.
 cases_TX_scaled <- texas_state_census_df %>% 
   select(
     features_of_interest,
@@ -130,7 +134,7 @@ cases_TX_scaled <- texas_state_census_df %>%
 
 summary(cases_TX_scaled)
 
-km <- kmeans(cases_TX_scaled, centers = 3, nstart = 10)
+km <- kmeans(cases_TX_scaled, centers = 4, nstart = 10)
 km
 
 ggplot(pivot_longer(as_tibble(km$centers,  rownames = "cluster"), 
@@ -155,3 +159,24 @@ ggplot(counties_polygon_TX_clust, aes(long, lat)) +
 cases_TX_clust %>% group_by(cluster) %>% summarize(
   avg_cases_per_1000 = mean(cases_per_1000), 
   avg_deaths_per_1000 = mean(deaths_per_1000))
+
+
+
+####################################################
+# Let's try hierarchial clustering
+library(factoextra)
+d <- dist(cases_TX_scaled)
+hc <- hclust(d, method = "complete")
+plot(hc)
+
+fviz_dend(hc)
+
+
+
+####################################################
+# Let's try DBSCAN clustering
+install.packages("dbscan")
+library(dbscan)
+
+kNNdistplot(cases_TX_scaled, minPts = 4)
+abline(h=.32, col = "red")
