@@ -34,7 +34,7 @@ plot_ideal_cluster_graph <- function(data) {
 }
 
 # visualizes clusters bases on more than 2 dimensions
-# Visual 1: PCA
+# Visual 1: 
 # Visual 2: Non-Linear Dimension Reduction
 # Visual 3: Uniform Manifold Approximation and Projection
 #

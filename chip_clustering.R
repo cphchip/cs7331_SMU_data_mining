@@ -178,5 +178,7 @@ fviz_dend(hc)
 install.packages("dbscan")
 library(dbscan)
 
-kNNdistplot(cases_TX_scaled, minPts = 4)
-abline(h=.32, col = "red")
+                 
+db <- dbscan(cases_TX_scaled, eps=0.8, minPts=4)
+
+
