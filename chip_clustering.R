@@ -148,6 +148,7 @@ ggplot(pivot_longer(as_tibble(km$centers,  rownames = "cluster"),
 
 cases_TX_clust <- texas_state_census_df %>% 
   add_column(cluster = factor(km$cluster))
+
 counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust, 
                                         join_by(county))
 

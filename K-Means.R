@@ -1,19 +1,31 @@
 library(tidyverse)
 library(ggplot2)
 library(GGally)
+library(dplyr)
+library(conflicted)
+library(Rtsne)
+library(umap)
+conflicts_prefer(dplyr::filter)
 
+################################# Data Import ################################# 
 
-# Import the initial mobility dataset
+# Import the initial census dataset
 census_cases_df <- read_csv("COVID-19_cases_plus_census.csv")
 
-#' Because the majority of our data is based on Texas, we'll start with that
-#' portion of the data for examination. I'd like to see the distribution of 
-#' values starting with box plots.
+# Pull in the Texas counties map
+counties_polygon <- as_tibble(map_data("county"))
+counties_polygon_TX <- counties_polygon %>% dplyr::filter(region == "texas") %>% 
+  rename(c(county = subregion)) 
+
+# Change the county names to be compatible with the county map
+census_cases_df <- census_cases_df %>% mutate(county = county_name %>% 
+  str_to_lower() %>% str_replace('\\s+county\\s*$', ''))
+census_cases_df %>% pull(county)
 
 # Select a subset of variables to examine
 texas_state_census_df <- census_cases_df %>%
   select(
-    county_name,
+    county,
     state,
     confirmed_cases,
     deaths,
@@ -46,54 +58,9 @@ texas_state_census_df <- census_cases_df %>%
   select(where(~ !is.logical(.))) %>%
   na.omit()
 
-texas_state_census_df <- texas_state_census_df %>% mutate(across(where(is.character), factor))
-dim(texas_state_census_df)
-
-#' We know covid disproportionately affected the elderly. I'd like an idea of 
-#' just how prevalent elderly populations were, so I'm going to combine some 
-#' features.
-
-male_elderly_features <- c(
-  "male_65_to_66",
-  "male_67_to_69",
-  "male_70_to_74",
-  "male_75_to_79",
-  "male_80_to_84", 
-  "male_85_and_over"
-)
-female_elderly_features <- c(
-  "female_65_to_66",
-  "female_67_to_69",
-  "female_70_to_74",
-  "female_75_to_79",
-  "female_80_to_84",
-  "female_85_and_over"
-)
-
-
-# Create new variables for combined age population, drop old ones
-texas_state_census_df <- texas_state_census_df %>%
-  mutate(male_over_65 = rowSums(across(male_elderly_features))) %>%
-  mutate(female_over_65 = rowSums(across(female_elderly_features))) %>%
-  mutate(pop_over_65 = male_over_65 + female_over_65) %>%
-  select(
-    -male_elderly_features, 
-    -female_elderly_features,
-  )
-
-# I'll also add opposite features to these:
-texas_state_census_df$male_under_65   <- texas_state_census_df$male_pop - texas_state_census_df$male_over_65
-texas_state_census_df$female_under_65 <- texas_state_census_df$female_pop - texas_state_census_df$female_over_65
-texas_state_census_df$pop_under_65    <- texas_state_census_df$total_pop - texas_state_census_df$pop_over_65
-
-library(dplyr)
-library(conflicted)
-library(Rtsne)
-library(umap)
-conflicts_prefer(dplyr::filter)
-
 #set randomness seed
 set.seed(1015)
+
 
 ##################### Helper functions ##################### 
 
@@ -182,14 +149,56 @@ silhouette_score <- function(k, data) {
 }
 
 
+
 ################## Data Prep ################## 
+
+texas_state_census_df <- texas_state_census_df %>% mutate(across(where(is.character), factor))
+dim(texas_state_census_df)
+
+#' We know covid disproportionately affected the elderly. I'd like an idea of 
+#' just how prevalent elderly populations were, so I'm going to combine some 
+#' features.
+
+male_elderly_features <- c(
+  "male_65_to_66",
+  "male_67_to_69",
+  "male_70_to_74",
+  "male_75_to_79",
+  "male_80_to_84", 
+  "male_85_and_over"
+)
+female_elderly_features <- c(
+  "female_65_to_66",
+  "female_67_to_69",
+  "female_70_to_74",
+  "female_75_to_79",
+  "female_80_to_84",
+  "female_85_and_over"
+)
+
+
+# Create new variables for combined age population, drop old ones
+texas_state_census_df <- texas_state_census_df %>%
+  mutate(male_over_65 = rowSums(across(male_elderly_features))) %>%
+  mutate(female_over_65 = rowSums(across(female_elderly_features))) %>%
+  mutate(pop_over_65 = male_over_65 + female_over_65) %>%
+  select(
+    -male_elderly_features, 
+    -female_elderly_features,
+  )
+
+# I'll also add opposite features to these:
+texas_state_census_df$male_under_65   <- texas_state_census_df$male_pop - texas_state_census_df$male_over_65
+texas_state_census_df$female_under_65 <- texas_state_census_df$female_pop - texas_state_census_df$female_over_65
+texas_state_census_df$pop_under_65    <- texas_state_census_df$total_pop - texas_state_census_df$pop_over_65
 
 #' To make sure all counties are on a level playing field from a density of 
 #' measurement perspective, I'll ensure my data is in a format of "per 1000 
 #' people"
-texas_census_per_1000 <- texas_state_census_df %>%
-  select(where(is.numeric))
+texas_census_per_1000 <- texas_state_census_df
 
+texas_census_per_1000$deaths_per_1000          <- texas_census_per_1000$deaths / texas_census_per_1000$total_pop * 1000
+texas_census_per_1000$cases_per_1000           <- texas_census_per_1000$confirmed_cases / texas_census_per_1000$total_pop * 1000
 texas_census_per_1000$white_pop_per_1000       <- texas_census_per_1000$white_pop / texas_census_per_1000$total_pop * 1000
 texas_census_per_1000$black_pop_per_1000       <- texas_census_per_1000$black_pop / texas_census_per_1000$total_pop * 1000
 texas_census_per_1000$asian_pop_per_1000       <- texas_census_per_1000$asian_pop / texas_census_per_1000$total_pop * 1000
@@ -210,11 +219,18 @@ summary(texas_census_per_1000)
 #' For our clustering functions to work properly, my data needs to be scaled. 
 #' This data will be the basis of my scaling functions.
 scaled_tx_census_features <- texas_census_per_1000 %>%
+  select(where(is.numeric)) %>%
   scale() %>% as_tibble()
 
 summary(scaled_tx_census_features)
 
+counties_polygon_TX <- right_join(counties_polygon_TX, texas_census_per_1000)
 
+ggplot(counties_polygon_TX, aes(long, lat)) + 
+  geom_polygon(aes(group = group, fill = deaths_per_1000)) +
+  coord_quickmap() +
+  scale_fill_continuous(type = "viridis") +
+  labs(title = "Texas death rates by county")
 
 ################### Grouping 1: Ethnic makeup of the county ###################
 pop_features <- c(
@@ -245,6 +261,20 @@ cluster_profiles(kmeans_results)
 # plotting with PCA, UMAP, and tsne
 visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
 
+# Visualize with Texas county map
+# cases_TX_clust <- texas_state_census_df %>% 
+#   add_column(cluster = factor(km$cluster))
+
+cases_TX_clust_race <- texas_state_census_df %>% 
+  add_column(cluster = factor(kmeans_results$cluster))
+
+counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust_race, 
+                                        join_by(county))
+
+ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
+  geom_polygon(aes(group = group, fill = cluster)) +
+  coord_quickmap() + 
+  labs(title = "Texas Map with Ethnicity Clustered Counties")
 #################### Grouping 2: Ages above and below 65 ####################
 
 age_features <- c(
@@ -272,3 +302,14 @@ cluster_profiles(kmeans_results)
 
 # plotting with PCA, UMAP, and tsne
 visualize_multiDim_cluster(scaled_census_age_features, ncol(scaled_census_age_features))
+
+cases_TX_clust_race <- texas_state_census_df %>% 
+  add_column(cluster = factor(kmeans_results$cluster))
+
+counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust_race, 
+                                        join_by(county))
+
+ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
+  geom_polygon(aes(group = group, fill = cluster)) +
+  coord_quickmap() + 
+  labs(title = "Texas Map with Age Clustered Counties")
