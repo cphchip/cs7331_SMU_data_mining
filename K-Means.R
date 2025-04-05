@@ -6,6 +6,7 @@ library(conflicted)
 library(Rtsne)
 library(umap)
 conflicts_prefer(dplyr::filter)
+library(gridExtra)
 
 ################################# Data Import ################################# 
 
@@ -84,52 +85,106 @@ plot_ideal_cluster_graph <- function(data) {
   df <- data.frame(wss = wss_values,
                    k_values=k_values)
   
-  p <- ggplot(df, aes(x=k_values,y=wss)) +
+  p1 <- ggplot(df, aes(x=k_values,y=wss)) +
     geom_line(color="blue", size=1) +
     geom_point(color="red",size=2) +
     labs(title="WSS vs Number of Clusters", x="Number of Clusters (k)",y="Sum of Squares") +
-    theme_minimal()
-  print(p)
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 18, face = "bold"),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14)
+    )
+  print(p1)
   
   sil_values <- sapply(k_values, getWSS_SIL, data=data, type="SIL")
+  df <- data.frame(k = k_values, silhouette = sil_values)
   
-  plot(k_values, sil_values, type = "b", pch = 19, col = "blue",
-       xlab = "Number of Clusters", ylab = "Silhouette Score",
-       main = "Silhouette Score vs Number of Clusters")
+  # Make the plot
+  p2 <- ggplot(df, aes(x = k, y = silhouette)) +
+    geom_point(color = "blue") +
+    geom_line(color = "blue") +
+    labs(
+      title = "Silhouette Score vs Number of Clusters",
+      x = "Number of Clusters",
+      y = "Silhouette Score"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 18, face = "bold"),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14)
+    )
+  
+  # Arrange in a row
+  grid.arrange(p1, p2,ncol = 2)
 }
 
 
 # requires that data has already been clustered
+# visualize_multiDim_cluster <- function(data, ncol) {
+#   # PCA
+#   pca <- prcomp(data[,-ncol(data)], center=TRUE, scale.=TRUE)
+#   df_pca <-data.frame(pca$x[,1:2],cluster=as.factor(data$cluster))
+#   
+#   g1<-ggplot(df_pca, aes(x = PC1, y = PC2, color = cluster)) +
+#     geom_point(size = 3) +
+#     labs(title = "PCA Visualization of Clusters") +
+#     theme_minimal()
+#   
+#   # t-SNE
+#   tsne_results <- Rtsne(data[, -ncol(data)], perplexity=30, check_duplicates=FALSE)
+#   df_tsne <- data.frame(tsne_results$Y, cluster=as.factor(data$cluster))
+#   
+#   g2<- ggplot(df_tsne, aes(x = X1, y = X2, color = cluster)) +
+#     geom_point(size = 3) +
+#     labs(title = "t-SNE Visualization of Clusters") +
+#     theme_minimal()
+#   
+#   # umap
+#   umap_result <- umap(data[,-ncol])
+#   df_umap <- data.frame(umap_result$layout, cluster = as.factor(data$cluster))
+#   
+#   g3<-ggplot(df_umap, aes(x = X1, y = X2, color = cluster)) +
+#     geom_point(size = 3) +
+#     labs(title = "UMAP Visualization of Clusters") +
+#     theme_minimal()
+#   print(g1)
+#   print(g2)
+#   print(g3)
+# }
+
+
 visualize_multiDim_cluster <- function(data, ncol) {
   # PCA
   pca <- prcomp(data[,-ncol(data)], center=TRUE, scale.=TRUE)
-  df_pca <-data.frame(pca$x[,1:2],cluster=as.factor(data$cluster))
+  df_pca <- data.frame(pca$x[,1:2], cluster = as.factor(data$cluster))
   
-  g1<-ggplot(df_pca, aes(x = PC1, y = PC2, color = cluster)) +
+  g1 <- ggplot(df_pca, aes(x = PC1, y = PC2, color = cluster)) +
     geom_point(size = 3) +
-    labs(title = "PCA Visualization of Clusters") +
+    labs(title = "PCA") +
     theme_minimal()
   
   # t-SNE
-  tsne_results <- Rtsne(data[, -ncol(data)], perplexity=30, check_duplicates=FALSE)
-  df_tsne <- data.frame(tsne_results$Y, cluster=as.factor(data$cluster))
+  tsne_results <- Rtsne(data[, -ncol(data)], perplexity = 30, check_duplicates = FALSE)
+  df_tsne <- data.frame(tsne_results$Y, cluster = as.factor(data$cluster))
   
-  g2<- ggplot(df_tsne, aes(x = X1, y = X2, color = cluster)) +
+  g2 <- ggplot(df_tsne, aes(x = X1, y = X2, color = cluster)) +
     geom_point(size = 3) +
-    labs(title = "t-SNE Visualization of Clusters") +
+    labs(title = "t-SNE") +
     theme_minimal()
   
-  # umap
-  umap_result <- umap(data[,-ncol])
+  # UMAP
+  umap_result <- umap(data[, -ncol])
   df_umap <- data.frame(umap_result$layout, cluster = as.factor(data$cluster))
   
-  g3<-ggplot(df_umap, aes(x = X1, y = X2, color = cluster)) +
+  g3 <- ggplot(df_umap, aes(x = X1, y = X2, color = cluster)) +
     geom_point(size = 3) +
-    labs(title = "UMAP Visualization of Clusters") +
+    labs(title = "UMAP") +
     theme_minimal()
-  print(g1)
-  print(g2)
-  print(g3)
+  
+  # Arrange in a row
+  grid.arrange(g1, g2, g3, ncol = 3)
 }
 
 cluster_profiles <- function(results) {
@@ -139,7 +194,12 @@ cluster_profiles <- function(results) {
     geom_bar(stat = "identity") +
     facet_grid(cols = vars(cluster)) +
     labs(y = "feature", x = "z-scores", title = "Cluster Profiles") + 
-    guides(fill="none")
+    guides(fill="none") + 
+    theme(
+      plot.title = element_text(size = 18, face = "bold"),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14)
+    )
 }
 
 library(cluster)
@@ -291,7 +351,7 @@ scaled_census_age_features <- scaled_tx_census_features %>%
 plot_ideal_cluster_graph(scaled_census_age_features)
 
 # dist_matrix <- dist(scaled_census_age_features)
-k <- 3
+k <- 4
 kmeans_results <- kmeans(scaled_census_age_features, centers=k, nstart = 10)
 
 # Assign cluster labels to dataset
