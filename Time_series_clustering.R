@@ -1,10 +1,159 @@
 library(tidyverse)
 library(ggplot2)
 library(GGally)
-library(ggcorrplot)
+library(dplyr)
+library(conflicted)
+library(Rtsne)
+library(umap)
+conflicts_prefer(dplyr::filter)
+conflicted::conflicts_prefer(proxy::dist)
+library(gridExtra)
+library(dtwclust)
+
+################################# Data Import ################################# 
 
 # Import the Texas cases dataset
 texas_time_series_df <- read_csv("COVID-19_cases_TX.csv")
+
+# Pull in the Texas counties map
+counties_polygon <- as_tibble(map_data("county"))
+counties_polygon_TX <- counties_polygon %>% dplyr::filter(region == "texas") %>% 
+  rename(c(county = subregion)) 
+
+
+############################### Helper Functions ############################### 
+
+# Aggregate the time series data at the week level
+library(lubridate)
+date_aggregator <- function(df) {
+  df_monthly <- df %>%
+    mutate(date = floor_date(date, unit = "month")) %>%
+    
+    return(df_monthly)
+}
+
+getWSS_SIL <- function(k, data, type="WSS", ts_clusters=NULL){
+  # dist_matrix <- dist(data, method="DTW")
+  ts_clusters <- tsclust(data, type = "partitional", k=k, distance = "dtw")
+  cluster_labels <- ts_cluster@cluster
+  
+  if (type == "WSS") {
+    wss = 0
+    for (i in 1:k) {
+      cluster_points <- data[cluster_labels == i, , drop = FALSE]
+      dist_Matrix <- dist(cluster_points, method = "DTW")
+      wss <- wss + sum(dist_matrix)
+    }
+    return(wss)
+  }
+  
+  if (type == "SIL") {
+    sil_score <- silhouette(cluster_labels, dist(data))
+    return(mean(sil_score[, 3]))
+  }
+}
+
+# plot wss and sil graphs
+plot_ideal_cluster_graph <- function(data) {
+  # Run k-means for 2 to 10 clusters
+  k_values <- 2:10
+  wss_values <- sapply(k_values, getWSS_SIL, data=data, type="WSS")
+  
+  df <- data.frame(wss = wss_values, k_values=k_values)
+  
+  p1 <- ggplot(df, aes(x=k_values,y=wss)) +
+    geom_line(color="blue", size=1) +
+    geom_point(color="red",size=2) +
+    labs(
+      title="WSS vs Number of Clusters", 
+      x="Number of Clusters (k)",
+      y="Sum of Squares"
+      ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 18, face = "bold"),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14)
+    )
+  print(p1)
+  
+  sil_values <- sapply(k_values, getWSS_SIL, data=data, type="SIL")
+  df <- data.frame(k = k_values, silhouette = sil_values)
+  
+  # Make the plot
+  p2 <- ggplot(df, aes(x = k, y = silhouette)) +
+    geom_point(color = "blue") +
+    geom_line(color = "blue") +
+    labs(
+      title = "Silhouette Score vs Number of Clusters",
+      x = "Number of Clusters",
+      y = "Silhouette Score"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 18, face = "bold"),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14)
+    )
+  
+  # Arrange in a row
+  grid.arrange(p1, p2,ncol = 2)
+}
+
+visualize_multiDim_cluster <- function(data, ncol) {
+  # PCA
+  pca <- prcomp(data[,-ncol(data)], center=TRUE, scale.=TRUE)
+  df_pca <- data.frame(pca$x[,1:2], cluster = as.factor(data$cluster))
+  
+  g1 <- ggplot(df_pca, aes(x = PC1, y = PC2, color = cluster)) +
+    geom_point(size = 3) +
+    labs(title = "PCA") +
+    theme_minimal()
+  
+  # t-SNE
+  tsne_results <- Rtsne(data[, -ncol(data)], perplexity = 30, check_duplicates = FALSE)
+  df_tsne <- data.frame(tsne_results$Y, cluster = as.factor(data$cluster))
+  
+  g2 <- ggplot(df_tsne, aes(x = X1, y = X2, color = cluster)) +
+    geom_point(size = 3) +
+    labs(title = "t-SNE") +
+    theme_minimal()
+  
+  # UMAP
+  umap_result <- umap(data[, -ncol])
+  df_umap <- data.frame(umap_result$layout, cluster = as.factor(data$cluster))
+  
+  g3 <- ggplot(df_umap, aes(x = X1, y = X2, color = cluster)) +
+    geom_point(size = 3) +
+    labs(title = "UMAP") +
+    theme_minimal()
+  
+  # Arrange in a row
+  grid.arrange(g1, g2, g3, ncol = 3)
+}
+
+cluster_profiles <- function(results) {
+  ggplot(pivot_longer(as_tibble(results$centers,  rownames = "cluster"), 
+                      cols = colnames(results$centers)), 
+         aes(y = name, x = value, fill = cluster)) +
+    geom_bar(stat = "identity") +
+    facet_grid(cols = vars(cluster)) +
+    labs(y = "feature", x = "z-scores", title = "Cluster Profiles") + 
+    guides(fill="none") + 
+    theme(
+      plot.title = element_text(size = 18, face = "bold"),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14)
+    )
+}
+
+library(cluster)
+silhouette_score <- function(k, data) {
+  km <- kmeans(data, centers=k, nstart = 10)
+  mean(silhouette(km$cluster, dist(data))[, 3])
+}
+
+################################## Data Prep ################################## 
 
 #' We'll select a subset of data for the COVID-19_cases_TX dataset, and remove
 #' anything that didn't have a county attributed to it.
@@ -19,7 +168,7 @@ texas_clean_df <- texas_time_series_df %>%
   filter(texas_time_series_df$county_name != 'Statewide Unallocated')
 
 # Import the mobility dataset
-mobility3_df <- read_csv("Global_Mobility_Report.csv")
+mobility_df <- read_csv("Global_Mobility_Report.csv")
 
 #' In order to enable joining the census data to the mobility data I needed a 
 #' lookup table of State name to it's abbreviation. Boy Scouts to the rescue!
@@ -28,8 +177,8 @@ state_to_postal <- read_csv("state_to_postal_code(Sheet1).csv")
 head(state_to_postal)
 
 # Join the State abbreviation dataset to my mobility dataset
-mobility3_df <- left_join(
-  mobility3_df,
+mobility_df <- left_join(
+  mobility_df,
   state_to_postal, 
   by = c('sub_region_1' = 'State')
 )
@@ -37,7 +186,7 @@ mobility3_df <- left_join(
 #' To pare down the mobility dataset I'll select a subset of features. I'll 
 #' also filter for United States and the state of Texas because that's all
 #' my Covid-19 cases datasaet contains. Finally, I'll drop any NA values.
-mobility_3_subset_df <- mobility3_df %>%
+mobility_subset_df <- mobility_df %>%
   select(
     country_region, 
     sub_region_1,
@@ -57,23 +206,13 @@ mobility_3_subset_df <- mobility3_df %>%
   drop_na(sub_region_1, sub_region_2)
 
 
-#' To make the two datasets join without significant NA's I'll create a function
-#' to aggregate the date data at the week level.
-library(lubridate)
-date_aggregator <- function(df) {
-  df_weekly <- df %>%
-    mutate(week = floor_date(date, unit = "week", week_start = 1)) %>%
-    
-    return(df_weekly)
-}
-
-weekly_texas_clean_df <- date_aggregator(texas_clean_df)
-weekly_mobility_df <- date_aggregator(mobility_3_subset_df)
+montly_texas_clean_df <- date_aggregator(texas_clean_df)
+montly_mobility_df <- date_aggregator(mobility_subset_df)
 
 # Join the two datasets
 time_series_df <- left_join(
-  mobility_3_subset_df,
-  texas_clean_df,
+  montly_mobility_df,
+  montly_texas_clean_df,
   by = c(
     'sub_region_2' = 'county_name',
     'date' = 'date'
@@ -101,3 +240,54 @@ aggregate_mobility <- function(df) {
   
   return(aggregate_df)
 }
+
+mobility_features <- c(
+  "avg_retail", 
+  "avg_grocery_and_pharmacy",
+  "avg_parks",
+  "avg_transit",
+  "avg_workplaces",
+  "avg_residential"
+  )
+
+time_series_aggregate_df <- aggregate_mobility(time_series_df)
+
+# Change the county names to be compatible with the county map
+time_series_aggregate_df <- time_series_aggregate_df %>% mutate(county = sub_region_2 %>% 
+  str_to_lower() %>% str_replace('\\s+county\\s*$', ''))
+
+# time_series_aggregate_df %>% pull(county)
+
+summary(time_series_aggregate_df)
+
+# aggregate_mobility_scaled <- time_series_aggregate_df %>%
+#   select(all_of(mobility_features)) %>%
+#   scale() %>% as_tibble()
+
+aggregate_mobility_scaled <- time_series_aggregate_df %>%
+  mutate(across(all_of(mobility_features), scale))  # Scale the mobility features
+
+summary(aggregate_mobility_scaled)
+
+
+###################### Grouping 1: Time Phase Clustering ######################
+
+ts_cluster_data <- aggregate_mobility_scaled %>%
+  select(all_of(mobility_features))
+
+# perform kmeans
+# plot_ideal_cluster_graph(cluster_data)
+
+# ts_clusters <- tsclust(cluster_data, type = "partitional", k=3, distance = "dtw")
+
+# mobility_clusters <- aggregate_mobility_scaled
+# mobility_clusters$cluster <- ts_clusters@cluster
+
+
+plot_ideal_cluster_graph(ts_cluster_data)
+# visualize_multiDim_cluster(scaled_census_age_features, ncol(scaled_census_age_features))
+
+
+
+mobility_clusters <- aggregate_mobility_scaled %>% 
+  add_column(cluster = factor(ts_clusters@cluster))

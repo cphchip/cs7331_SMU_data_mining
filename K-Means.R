@@ -6,6 +6,7 @@ library(conflicted)
 library(Rtsne)
 library(umap)
 conflicts_prefer(dplyr::filter)
+conflicted::conflicts_prefer(stats::dist)
 library(gridExtra)
 
 ################################# Data Import ################################# 
@@ -63,7 +64,7 @@ texas_state_census_df <- census_cases_df %>%
 set.seed(1015)
 
 
-##################### Helper functions ##################### 
+############################### Helper functions ###############################
 
 getWSS_SIL <- function(k, data, type){
   dist_matrix <- dist(data)
@@ -210,7 +211,7 @@ silhouette_score <- function(k, data) {
 
 
 
-################## Data Prep ################## 
+################################## Data Prep ################################## 
 
 texas_state_census_df <- texas_state_census_df %>% mutate(across(where(is.character), factor))
 dim(texas_state_census_df)
@@ -335,6 +336,8 @@ ggplot(counties_polygon_TX_clust, aes(long, lat)) +
   geom_polygon(aes(group = group, fill = cluster)) +
   coord_quickmap() + 
   labs(title = "Texas Map with Ethnicity Clustered Counties")
+
+
 #################### Grouping 2: Ages above and below 65 ####################
 
 age_features <- c(
