@@ -14,17 +14,25 @@ getWSS <- function(k, data){
  kmeans(data,centers=k,nstart=10)$tot.withinss
 }
 
+# manually computer wss (from ChatGPT)
+compute_wss <- function(data, clusters){
+  wss <- 0
+  for (k in unique(clusters)) {
+    cluster_points <- data[clusters == k, , drop = FALSE]
+    centroid <- colMeans(cluster_points)
+    wss <- wss + sum(rowSums((cluster_points - centroid)^2))
+  }
+  return(wss)
+}
+
 # plot wss
 plot_ideal_cluster_graph <- function(data) {
   k_values <- 1:10
-  print("1")
   wss_values <- sapply(k_values, getWSS, data=data)
-  print("2")
-  
+  print(wss_values)
   df <- data.frame(wss = wss_values,
                    k_values=k_values)
-  
-  print("3")
+
   
   ggplot(df, aes(x=k_values,y=wss)) +
     geom_line(color="blue", size=1) +
@@ -115,16 +123,49 @@ sel_census_numeric <- sel_census_numeric %>%
 # kmeans
 plot_ideal_cluster_graph(sel_census_numeric) # selecting 3 or 4
 kmeans_results <- kmeans(sel_census_numeric, centers=3)
-sel_census_numeric$cluster <- as.factor(kmeans_results$cluster)
+print(kmeans_results$withinss)
+#sel_census_numeric$cluster <- as.factor(kmeans_results$cluster)
 
 #plotting with PCA
-visualize_multiDim_cluster(sel_census_numeric, 7)
+#visualize_multiDim_cluster(sel_census_numeric, 7)
 
 # hiearchical clustering
 d <- dist(sel_census_numeric)
 hc <- hclust(d)
 plot(hc, main="Hierarchical Clustering Dendrogram")
 clusters <- cutree(hc, k = 3)
+wss_total <- compute_wss(sel_census_numeric, clusters)
+print(wss_total)
+wss_total_kmeans <- compute_wss(sel_census_numeric,kmeans_results$cluster)
+print(wss_total_kmeans)
+
+plot_wss_graph <- function(mydata, max_k) {
+  d <- dist(mydata)
+  hc <- hclust(d)
+  all_wss <- c()
+  for (K in 1:max_k)
+  {
+    clusters <- cutree(hc, k=K)
+    wss_total <- compute_wss(mydata, clusters)
+    all_wss <- c(all_wss, wss_total)
+  }
+  k_values <- 1:max_k
+  
+  df <- data.frame(wss = all_wss,
+                   k_values=k_values)
+  
+  ggplot(df, aes(x=k_values,y=wss)) +
+    geom_line(color="blue", size=1) +
+    geom_point(color="red",size=2) +
+    labs(title="WSS vs Number of Clusters", x="Number of Clusters (k)",y="Sum of Squares") +
+    theme_minimal()
+}
+
+plot_wss_graph(sel_census_numeric, 10)
+
+clusters.SSE
+
+print(wss_total)
 sel_census_numeric$cluster <- clusters
 visualize_multiDim_cluster(sel_census_numeric, 7)
 
@@ -133,3 +174,11 @@ visualize_multiDim_cluster(sel_census_numeric, 7)
 ##### Grouping 3: Employment makeup of the county
 
 ##### Grouping 4: Income Makeup of the county
+
+##### Evaluating clusters
+# SSE/WSS | TSS = WSS + BSS
+# BSS
+# similarity Matrix Visualization
+# calculate correlation
+# silhouette plot
+
