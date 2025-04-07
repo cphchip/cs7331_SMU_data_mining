@@ -8,6 +8,8 @@ library(umap)
 conflicts_prefer(dplyr::filter)
 library(gridExtra)
 library(cluster)
+library(seriation)
+
 
 ################################# Data Import ################################# 
 
@@ -54,7 +56,24 @@ texas_state_census_df <- census_cases_df %>%
     asian_pop,
     amerindian_pop,
     other_race_pop,
-    two_or_more_races_pop
+    two_or_more_races_pop,
+    households,
+    income_less_10000,                                             
+    income_10000_14999,                                            
+    income_15000_19999,                                            
+    income_20000_24999,                                            
+    income_25000_29999,                                            
+    income_30000_34999,                                            
+    income_35000_39999,                                            
+    income_40000_44999,                                            
+    income_45000_49999,                                            
+    income_50000_59999,                                            
+    income_60000_74999,                                            
+    income_75000_99999,                                            
+    income_100000_124999,                                          
+    income_125000_149999,                                          
+    income_150000_199999,                                          
+    income_200000_or_more
   ) %>%
   filter(state == "TX") %>%
   select(where(~ !is.logical(.))) %>%
@@ -251,30 +270,32 @@ texas_state_census_df$pop_under_65    <- texas_state_census_df$total_pop - texas
 #' people"
 texas_census_per_1000 <- texas_state_census_df
 
-texas_census_per_1000$deaths_per_1000          <- texas_census_per_1000$deaths / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$cases_per_1000           <- texas_census_per_1000$confirmed_cases / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$white_pop_per_1000       <- texas_census_per_1000$white_pop / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$black_pop_per_1000       <- texas_census_per_1000$black_pop / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$asian_pop_per_1000       <- texas_census_per_1000$asian_pop / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$hispanic_pop_per_1000    <- texas_census_per_1000$hispanic_pop / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$amerindian_pop_per_1000  <- texas_census_per_1000$amerindian_pop / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$other_race_pop_per_1000  <- texas_census_per_1000$other_race_pop / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$two_or_more_races_pop    <- texas_census_per_1000$two_or_more_races_pop / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$female_over_65_per_1000  <- texas_census_per_1000$female_over_65 / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$male_over_65_per_1000    <- texas_census_per_1000$male_over_65 / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$male_pop_per_1000        <- texas_census_per_1000$male_pop / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$female_pop_per_1000      <- texas_census_per_1000$female_pop / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$male_under_65_per_1000   <- texas_census_per_1000$male_under_65 / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$female_under_65_per_1000 <- texas_census_per_1000$female_under_65 / texas_census_per_1000$total_pop * 1000
-texas_census_per_1000$pop_under_65_per_1000    <- texas_census_per_1000$pop_under_65 / texas_census_per_1000$total_pop * 1000
+cols_to_convert <- c(
+  "deaths", "confirmed_cases", "white_pop", "black_pop", "asian_pop", 
+  "hispanic_pop", "amerindian_pop", "other_race_pop", "two_or_more_races_pop", 
+  "female_over_65", "male_over_65", "male_pop", "female_pop", "male_under_65", 
+  "female_under_65", "pop_under_65", "households", "income_less_10000",
+  "income_10000_14999", "income_15000_19999", "income_20000_24999",
+  "income_25000_29999", "income_30000_34999", "income_35000_39999",
+  "income_40000_44999", "income_45000_49999", "income_50000_59999",                                            
+  "income_60000_74999", "income_75000_99999", "income_100000_124999",
+  "income_125000_149999", "income_150000_199999", "income_200000_or_more"
+)
+
+# Apply the 'per 1000' conversion to all cols_to_convert
+texas_census_per_1000 <- texas_state_census_df %>%
+  mutate(across(
+    all_of(cols_to_convert),
+    ~ .x / total_pop * 1000,
+    .names = "{.col}_per_1000"
+  ))
 
 # Add some pop statistics columns
-texas_census_per_1000$percent_white <- texas_census_per_1000$white_pop / texas_census_per_1000$total_pop * 100
-texas_census_per_1000$percent_black<- texas_census_per_1000$black_pop / texas_census_per_1000$total_pop * 100
-texas_census_per_1000$percent_asian <- texas_census_per_1000$asian_pop / texas_census_per_1000$total_pop * 100
-texas_census_per_1000$percent_hispanic<- texas_census_per_1000$hispanic_pop / texas_census_per_1000$total_pop * 100
+texas_census_per_1000$percent_white      <- texas_census_per_1000$white_pop / texas_census_per_1000$total_pop * 100
+texas_census_per_1000$percent_black      <- texas_census_per_1000$black_pop / texas_census_per_1000$total_pop * 100
+texas_census_per_1000$percent_asian      <- texas_census_per_1000$asian_pop / texas_census_per_1000$total_pop * 100
+texas_census_per_1000$percent_hispanic   <- texas_census_per_1000$hispanic_pop / texas_census_per_1000$total_pop * 100
 texas_census_per_1000$percent_amerindian <- texas_census_per_1000$amerindian_pop / texas_census_per_1000$total_pop * 100
-
 
 
 summary(texas_census_per_1000)
@@ -334,12 +355,9 @@ visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_fe
 sil <- silhouette(kmeans_results$cluster, dist_matrix)
 plot(sil) # Plot silhouette widths
 
-library(seriation)
-ggpimage(dist_matrix)
+# Check clustering tendency
 ggpimage(dist_matrix, order=order(kmeans_results$cluster))
-ggdissplot(dist_matrix, labels = kmeans_results$cluster, 
-           options = list(main = "k-means with k=6"))
-# fviz_dist(dist_matrix)
+
 
 # Supervised Cluster Evaluation
 random_4 <- sample(1:4, nrow(scaled_census_pop_features), replace = TRUE)
@@ -429,12 +447,8 @@ visualize_multiDim_cluster(scaled_census_age_features, ncol(scaled_census_age_fe
 sil <- silhouette(kmeans_results$cluster, dist_matrix)
 plot(sil) # Plot silhouette widths
 
-library(seriation)
-ggpimage(dist_matrix)
+# Check clustering tendency
 ggpimage(dist_matrix, order=order(kmeans_results$cluster))
-ggdissplot(dist_matrix, labels = kmeans_results$cluster, 
-           options = list(main = "k-means with k=6"))
-# fviz_dist(dist_matrix)
 
 # Map our results to the county map of Texas
 cases_TX_clust_race <- texas_state_census_df %>% 
@@ -447,3 +461,66 @@ ggplot(counties_polygon_TX_clust, aes(long, lat)) +
   geom_polygon(aes(group = group, fill = cluster)) +
   coord_quickmap() + 
   labs(title = "Texas Map with Age Clustered Counties")
+
+
+############################# Grouping 3: Income ##############################
+
+income_features <- c(
+  "households_per_1000",
+  "income_less_10000_per_1000",
+  "income_10000_14999_per_1000",
+  "income_15000_19999_per_1000",
+  "income_20000_24999_per_1000",
+  "income_25000_29999_per_1000",
+  "income_30000_34999_per_1000",
+  "income_35000_39999_per_1000",
+  "income_40000_44999_per_1000",
+  "income_45000_49999_per_1000",
+  "income_50000_59999_per_1000",
+  "income_60000_74999_per_1000",
+  "income_75000_99999_per_1000",
+  "income_100000_124999_per_1000",
+  "income_125000_149999_per_1000",
+  "income_150000_199999_per_1000",
+  "income_200000_or_more_per_1000"
+  )
+
+scaled_census_income_features <- scaled_tx_census_features %>%
+  select(all_of(income_features))
+
+# perform kmeans
+plot_ideal_cluster_graph(scaled_census_income_features)
+
+dist_matrix <- dist(scaled_census_income_features)
+k <- 5
+kmeans_results <- kmeans(scaled_census_income_features, centers=k, nstart = 10)
+
+# Assign cluster labels to dataset
+scaled_census_income_features$cluster <- as.factor(kmeans_results$cluster)
+
+# Assess cluster profiles
+cluster_profiles(kmeans_results)
+
+# plotting with PCA, UMAP, and tsne
+visualize_multiDim_cluster(scaled_census_income_features, ncol(scaled_census_income_features))
+
+# Unsupervised cluster evaluation
+sil <- silhouette(kmeans_results$cluster, dist_matrix)
+plot(sil) # Plot silhouette widths
+
+# Check clustering tendency
+ggpimage(dist_matrix, order=order(kmeans_results$cluster))
+
+# Map our results to the county map of Texas
+cases_TX_clust_race <- texas_state_census_df %>% 
+  add_column(cluster = factor(kmeans_results$cluster))
+
+counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust_race, 
+                                        join_by(county))
+
+ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
+  geom_polygon(aes(group = group, fill = cluster)) +
+  coord_quickmap() + 
+  labs(title = "Texas Map with Age Clustered Counties")
+
+
