@@ -29,51 +29,26 @@ census_cases_df %>% pull(county)
 # Select a subset of variables to examine
 texas_state_census_df <- census_cases_df %>%
   select(
-    county,
-    state,
-    confirmed_cases,
-    deaths,
-    total_pop,
-    male_65_to_66,
-    male_67_to_69,
-    male_70_to_74,
-    male_75_to_79,
-    male_80_to_84,
-    male_85_and_over,
-    female_65_to_66,
-    female_67_to_69,
-    female_70_to_74,
-    female_75_to_79,
-    female_80_to_84,
-    female_85_and_over,
-    male_pop,
-    female_pop,
-    median_income,
-    poverty,
-    white_pop,
-    hispanic_pop,
-    black_pop,
-    asian_pop,
-    amerindian_pop,
-    other_race_pop,
-    two_or_more_races_pop,
-    households,
-    income_less_10000,                                             
-    income_10000_14999,                                            
-    income_15000_19999,                                            
-    income_20000_24999,                                            
-    income_25000_29999,                                            
-    income_30000_34999,                                            
-    income_35000_39999,                                            
-    income_40000_44999,                                            
-    income_45000_49999,                                            
-    income_50000_59999,                                            
-    income_60000_74999,                                            
-    income_75000_99999,                                            
-    income_100000_124999,                                          
-    income_125000_149999,                                          
-    income_150000_199999,                                          
-    income_200000_or_more
+    county, state, confirmed_cases, deaths, total_pop, male_65_to_66,
+    male_67_to_69, male_70_to_74, male_75_to_79, male_80_to_84, male_85_and_over,
+    female_65_to_66, female_67_to_69, female_70_to_74, female_75_to_79,
+    female_80_to_84, female_85_and_over, male_pop, female_pop, median_income,
+    poverty, white_pop, hispanic_pop, black_pop, asian_pop, amerindian_pop,
+    other_race_pop, two_or_more_races_pop, households, income_less_10000,                                             
+    income_10000_14999, income_15000_19999, income_20000_24999,                                            
+    income_25000_29999, income_30000_34999, income_35000_39999,                                            
+    income_40000_44999, income_45000_49999, income_50000_59999,                                            
+    income_60000_74999, income_75000_99999, income_100000_124999,                                          
+    income_125000_149999, income_150000_199999, income_200000_or_more,
+    employed_agriculture_forestry_fishing_hunting_mining,
+    employed_arts_entertainment_recreation_accommodation_food,
+    employed_construction, employed_education_health_social,                              
+    employed_finance_insurance_real_estate, employed_information,                                          
+    employed_manufacturing, employed_other_services_not_public_admin,                      
+    employed_public_administration, employed_retail_trade,                                         
+    employed_science_management_admin_waste,                       
+    employed_transportation_warehousing_utilities,                 
+    employed_wholesale_trade, unemployed_pop
   ) %>%
   filter(state == "TX") %>%
   select(where(~ !is.logical(.))) %>%
@@ -279,7 +254,16 @@ cols_to_convert <- c(
   "income_25000_29999", "income_30000_34999", "income_35000_39999",
   "income_40000_44999", "income_45000_49999", "income_50000_59999",                                            
   "income_60000_74999", "income_75000_99999", "income_100000_124999",
-  "income_125000_149999", "income_150000_199999", "income_200000_or_more"
+  "income_125000_149999", "income_150000_199999", "income_200000_or_more",
+  "employed_agriculture_forestry_fishing_hunting_mining",
+  "employed_arts_entertainment_recreation_accommodation_food",     
+  "employed_construction", "employed_education_health_social",                              
+  "employed_finance_insurance_real_estate", "employed_information",                                          
+  "employed_manufacturing", "employed_other_services_not_public_admin",                      
+  "employed_public_administration", "employed_retail_trade",                                         
+  "employed_science_management_admin_waste",
+  "employed_transportation_warehousing_utilities", "employed_wholesale_trade",
+  "unemployed_pop"
 )
 
 # Apply the 'per 1000' conversion to all cols_to_convert
@@ -521,6 +505,62 @@ counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust_race
 ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
   geom_polygon(aes(group = group, fill = cluster)) +
   coord_quickmap() + 
-  labs(title = "Texas Map with Age Clustered Counties")
+  labs(title = "Texas Map with Income Clustered Counties")
 
 
+########################### Grouping 4: Employment ############################
+
+employed_features <- c(
+  "employed_agriculture_forestry_fishing_hunting_mining",
+  "employed_arts_entertainment_recreation_accommodation_food",     
+  "employed_construction",                                         
+  "employed_education_health_social",                              
+  "employed_finance_insurance_real_estate",                        
+  "employed_information",                                          
+  "employed_manufacturing",                                        
+  "employed_other_services_not_public_admin",                      
+  "employed_public_administration",                                
+  "employed_retail_trade",                                         
+  "employed_science_management_admin_waste",                       
+  "employed_transportation_warehousing_utilities",                 
+  "employed_wholesale_trade",
+  "unemployed_pop"
+)
+
+scaled_census_employed_features <- scaled_tx_census_features %>%
+  select(all_of(employed_features))
+
+# perform kmeans
+plot_ideal_cluster_graph(scaled_census_employed_features)
+
+dist_matrix <- dist(scaled_census_employed_features)
+k <- 5
+kmeans_results <- kmeans(scaled_census_employed_features, centers=k, nstart = 10)
+
+# Assign cluster labels to dataset
+scaled_census_employed_features$cluster <- as.factor(kmeans_results$cluster)
+
+# Assess cluster profiles
+cluster_profiles(kmeans_results)
+
+# plotting with PCA, UMAP, and tsne
+visualize_multiDim_cluster(scaled_census_employed_features, ncol(scaled_census_employed_features))
+
+# Unsupervised cluster evaluation
+sil <- silhouette(kmeans_results$cluster, dist_matrix)
+plot(sil) # Plot silhouette widths
+
+# Check clustering tendency
+ggpimage(dist_matrix, order=order(kmeans_results$cluster))
+
+# Map our results to the county map of Texas
+cases_TX_clust_race <- texas_state_census_df %>% 
+  add_column(cluster = factor(kmeans_results$cluster))
+
+counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust_race, 
+                                        join_by(county))
+
+ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
+  geom_polygon(aes(group = group, fill = cluster)) +
+  coord_quickmap() + 
+  labs(title = "Texas Map with Employment Clustered Counties")
