@@ -6,8 +6,8 @@ library(conflicted)
 library(Rtsne)
 library(umap)
 conflicts_prefer(dplyr::filter)
-conflicted::conflicts_prefer(stats::dist)
 library(gridExtra)
+library(cluster)
 
 ################################# Data Import ################################# 
 
@@ -21,7 +21,7 @@ counties_polygon_TX <- counties_polygon %>% dplyr::filter(region == "texas") %>%
 
 # Change the county names to be compatible with the county map
 census_cases_df <- census_cases_df %>% mutate(county = county_name %>% 
-  str_to_lower() %>% str_replace('\\s+county\\s*$', ''))
+                                                str_to_lower() %>% str_replace('\\s+county\\s*$', ''))
 census_cases_df %>% pull(county)
 
 # Select a subset of variables to examine
@@ -64,7 +64,7 @@ texas_state_census_df <- census_cases_df %>%
 set.seed(1015)
 
 
-############################### Helper functions ###############################
+##################### Helper functions ##################### 
 
 getWSS_SIL <- function(k, data, type){
   dist_matrix <- dist(data)
@@ -82,7 +82,7 @@ plot_ideal_cluster_graph <- function(data) {
   # Run k-means for 2 to 10 clusters
   k_values <- 2:10
   wss_values <- sapply(k_values, getWSS_SIL, data=data, type="WSS")
-
+  
   df <- data.frame(wss = wss_values,
                    k_values=k_values)
   
@@ -120,41 +120,6 @@ plot_ideal_cluster_graph <- function(data) {
   # Arrange in a row
   grid.arrange(p1, p2,ncol = 2)
 }
-
-
-# requires that data has already been clustered
-# visualize_multiDim_cluster <- function(data, ncol) {
-#   # PCA
-#   pca <- prcomp(data[,-ncol(data)], center=TRUE, scale.=TRUE)
-#   df_pca <-data.frame(pca$x[,1:2],cluster=as.factor(data$cluster))
-#   
-#   g1<-ggplot(df_pca, aes(x = PC1, y = PC2, color = cluster)) +
-#     geom_point(size = 3) +
-#     labs(title = "PCA Visualization of Clusters") +
-#     theme_minimal()
-#   
-#   # t-SNE
-#   tsne_results <- Rtsne(data[, -ncol(data)], perplexity=30, check_duplicates=FALSE)
-#   df_tsne <- data.frame(tsne_results$Y, cluster=as.factor(data$cluster))
-#   
-#   g2<- ggplot(df_tsne, aes(x = X1, y = X2, color = cluster)) +
-#     geom_point(size = 3) +
-#     labs(title = "t-SNE Visualization of Clusters") +
-#     theme_minimal()
-#   
-#   # umap
-#   umap_result <- umap(data[,-ncol])
-#   df_umap <- data.frame(umap_result$layout, cluster = as.factor(data$cluster))
-#   
-#   g3<-ggplot(df_umap, aes(x = X1, y = X2, color = cluster)) +
-#     geom_point(size = 3) +
-#     labs(title = "UMAP Visualization of Clusters") +
-#     theme_minimal()
-#   print(g1)
-#   print(g2)
-#   print(g3)
-# }
-
 
 visualize_multiDim_cluster <- function(data, ncol) {
   # PCA
@@ -203,15 +168,43 @@ cluster_profiles <- function(results) {
     )
 }
 
-library(cluster)
-silhouette_score <- function(k, data) {
-  km <- kmeans(data, centers=k, nstart = 10)
-  mean(silhouette(km$cluster, dist(data))[, 3])
+
+purity <- function(cluster, truth, show_table = FALSE) {
+  if (length(cluster) != length(truth))
+    stop("Cluster vector and ground truth vectors are not of the same length!")
+  
+  # tabulate
+  tbl <- table(cluster, truth)
+  if(show_table)
+    print(tbl)
+  
+  # find majority class
+  majority <- apply(tbl, 1, max)
+  sum(majority) / length(cluster)
+}
+
+entropy <- function(cluster, truth, show_table = FALSE) {
+  if (length(cluster) != length(truth))
+    stop("Cluster vector and ground truth vectors are not of the same length!")
+  
+  # calculate membership probability of cluster to class
+  tbl <- table(cluster, truth)
+  p <- sweep(tbl, 2, colSums(tbl), "/")
+  
+  if(show_table)
+    print(p)
+  
+  # calculate cluster entropy
+  e <- -p * log(p, 2)
+  e <- rowSums(e, na.rm = TRUE)
+  
+  # weighted sum over clusters
+  w <- table(cluster) / length(cluster)
+  sum(w * e)
 }
 
 
-
-################################## Data Prep ################################## 
+################################## Data Prep ##################################
 
 texas_state_census_df <- texas_state_census_df %>% mutate(across(where(is.character), factor))
 dim(texas_state_census_df)
@@ -275,6 +268,15 @@ texas_census_per_1000$male_under_65_per_1000   <- texas_census_per_1000$male_und
 texas_census_per_1000$female_under_65_per_1000 <- texas_census_per_1000$female_under_65 / texas_census_per_1000$total_pop * 1000
 texas_census_per_1000$pop_under_65_per_1000    <- texas_census_per_1000$pop_under_65 / texas_census_per_1000$total_pop * 1000
 
+# Add some pop statistics columns
+texas_census_per_1000$percent_white <- texas_census_per_1000$white_pop / texas_census_per_1000$total_pop * 100
+texas_census_per_1000$percent_black<- texas_census_per_1000$black_pop / texas_census_per_1000$total_pop * 100
+texas_census_per_1000$percent_asian <- texas_census_per_1000$asian_pop / texas_census_per_1000$total_pop * 100
+texas_census_per_1000$percent_hispanic<- texas_census_per_1000$hispanic_pop / texas_census_per_1000$total_pop * 100
+texas_census_per_1000$percent_amerindian <- texas_census_per_1000$amerindian_pop / texas_census_per_1000$total_pop * 100
+
+
+
 summary(texas_census_per_1000)
 
 #' For our clustering functions to work properly, my data needs to be scaled. 
@@ -293,7 +295,9 @@ ggplot(counties_polygon_TX, aes(long, lat)) +
   scale_fill_continuous(type = "viridis") +
   labs(title = "Texas death rates by county")
 
+
 ################### Grouping 1: Ethnic makeup of the county ###################
+
 pop_features <- c(
   "white_pop_per_1000",
   "black_pop_per_1000",
@@ -301,7 +305,7 @@ pop_features <- c(
   "hispanic_pop_per_1000", 
   "amerindian_pop_per_1000", 
   "other_race_pop_per_1000"
-  )
+)
 
 scaled_census_pop_features <- scaled_tx_census_features %>%
   select(all_of(pop_features))
@@ -309,12 +313,16 @@ scaled_census_pop_features <- scaled_tx_census_features %>%
 # perform kmeans
 plot_ideal_cluster_graph(scaled_census_pop_features)
 
-# dist_matrix <- dist(scaled_census_pop_features)
+dist_matrix <- dist(scaled_census_pop_features)
 k <- 6
 kmeans_results <- kmeans(scaled_census_pop_features, centers=k, nstart = 10)
 
 # Assign cluster labels to dataset
 scaled_census_pop_features$cluster <- as.factor(kmeans_results$cluster)
+
+# Plot silhouette widths
+sil <- silhouette(kmeans_results$cluster, dist_matrix)
+plot(sil)
 
 # Assess cluster profiles
 cluster_profiles(kmeans_results)
@@ -322,10 +330,61 @@ cluster_profiles(kmeans_results)
 # plotting with PCA, UMAP, and tsne
 visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
 
-# Visualize with Texas county map
-# cases_TX_clust <- texas_state_census_df %>% 
-#   add_column(cluster = factor(km$cluster))
+# Unsupervised cluster evaluation
+sil <- silhouette(kmeans_results$cluster, dist_matrix)
+plot(sil) # Plot silhouette widths
 
+library(seriation)
+ggpimage(dist_matrix)
+ggpimage(dist_matrix, order=order(kmeans_results$cluster))
+ggdissplot(dist_matrix, labels = kmeans_results$cluster, 
+           options = list(main = "k-means with k=6"))
+# fviz_dist(dist_matrix)
+
+# Supervised Cluster Evaluation
+random_4 <- sample(1:4, nrow(scaled_census_pop_features), replace = TRUE)
+random_6 <- sample(1:6, nrow(scaled_census_pop_features), replace = TRUE)
+
+# r <- rbind(
+#   truth = c(
+#     unlist(fpc::cluster.stats(dist_matrix, truth, 
+#                               truth, compareonly = TRUE)),
+#     purity = purity(truth, truth),
+#     entropy = entropy(truth, truth)
+#   ),
+#   
+#   kmeans_7 = c(
+#     unlist(fpc::cluster.stats(dist_matrix, kmeans_results$cluster, 
+#                               truth, compareonly = TRUE)),
+#     purity = purity(kmeans_results$cluster, truth),
+#     entropy = entropy(kmeans_results$cluster, truth)
+#   ),
+#   hc_4 = c(
+#     unlist(fpc::cluster.stats(dist_matrix, hc_4, 
+#                               truth, compareonly = TRUE)),
+#     purity = purity(hc_4, truth),
+#     entropy = entropy(hc_4, truth)
+#   ),
+#   random_4 = c(
+#     unlist(fpc::cluster.stats(dist_matrix, random_4, 
+#                               truth, compareonly = TRUE)),
+#     purity = purity(random_4, truth),
+#     entropy = entropy(random_4, truth)
+#   ),
+#   random_6 = c(
+#     unlist(fpc::cluster.stats(dist_matrix, random_6, 
+#                               truth, compareonly = TRUE)),
+#     purity = purity(random_6, truth),
+#     entropy = entropy(random_6, truth)
+#   )
+# )
+# r
+
+# Clustering Tendency
+# d_shapes <- dist(scale(scaled_census_pop_features))
+# ggVAT(d_shapes)
+
+# Map our results to the county map of Texas
 cases_TX_clust_race <- texas_state_census_df %>% 
   add_column(cluster = factor(kmeans_results$cluster))
 
@@ -345,7 +404,7 @@ age_features <- c(
   "male_over_65_per_1000", 
   "male_under_65_per_1000", 
   "female_under_65_per_1000"
-  )
+)
 
 scaled_census_age_features <- scaled_tx_census_features %>%
   select(all_of(age_features))
@@ -353,8 +412,8 @@ scaled_census_age_features <- scaled_tx_census_features %>%
 # perform kmeans
 plot_ideal_cluster_graph(scaled_census_age_features)
 
-# dist_matrix <- dist(scaled_census_age_features)
-k <- 4
+dist_matrix <- dist(scaled_census_age_features)
+k <- 3
 kmeans_results <- kmeans(scaled_census_age_features, centers=k, nstart = 10)
 
 # Assign cluster labels to dataset
@@ -366,6 +425,18 @@ cluster_profiles(kmeans_results)
 # plotting with PCA, UMAP, and tsne
 visualize_multiDim_cluster(scaled_census_age_features, ncol(scaled_census_age_features))
 
+# Unsupervised cluster evaluation
+sil <- silhouette(kmeans_results$cluster, dist_matrix)
+plot(sil) # Plot silhouette widths
+
+library(seriation)
+ggpimage(dist_matrix)
+ggpimage(dist_matrix, order=order(kmeans_results$cluster))
+ggdissplot(dist_matrix, labels = kmeans_results$cluster, 
+           options = list(main = "k-means with k=6"))
+# fviz_dist(dist_matrix)
+
+# Map our results to the county map of Texas
 cases_TX_clust_race <- texas_state_census_df %>% 
   add_column(cluster = factor(kmeans_results$cluster))
 

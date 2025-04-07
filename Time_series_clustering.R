@@ -8,7 +8,6 @@ library(umap)
 conflicts_prefer(dplyr::filter)
 conflicted::conflicts_prefer(proxy::dist)
 library(gridExtra)
-library(dtwclust)
 
 ################################# Data Import ################################# 
 
@@ -32,73 +31,85 @@ date_aggregator <- function(df) {
     return(df_monthly)
 }
 
-getWSS_SIL <- function(k, data, type="WSS", ts_clusters=NULL){
-  # dist_matrix <- dist(data, method="DTW")
-  ts_clusters <- tsclust(data, type = "partitional", k=k, distance = "dtw")
-  cluster_labels <- ts_cluster@cluster
-  
-  if (type == "WSS") {
-    wss = 0
-    for (i in 1:k) {
-      cluster_points <- data[cluster_labels == i, , drop = FALSE]
-      dist_Matrix <- dist(cluster_points, method = "DTW")
-      wss <- wss + sum(dist_matrix)
-    }
-    return(wss)
-  }
-  
-  if (type == "SIL") {
-    sil_score <- silhouette(cluster_labels, dist(data))
-    return(mean(sil_score[, 3]))
-  }
+ts_df_to_matrix <- function(df, feature) {
+  # Clean and convert to matrix as before
+  mat <- df %>%
+    select(county, date, feature) %>%
+    arrange(county, date) %>%
+    pivot_wider(names_from = date, values_from = feature) %>%
+    column_to_rownames("county") %>%
+    drop_na() %>%
+    as.matrix()
+  return(mat)
 }
 
-# plot wss and sil graphs
-plot_ideal_cluster_graph <- function(data) {
-  # Run k-means for 2 to 10 clusters
-  k_values <- 2:10
-  wss_values <- sapply(k_values, getWSS_SIL, data=data, type="WSS")
-  
-  df <- data.frame(wss = wss_values, k_values=k_values)
-  
-  p1 <- ggplot(df, aes(x=k_values,y=wss)) +
-    geom_line(color="blue", size=1) +
-    geom_point(color="red",size=2) +
-    labs(
-      title="WSS vs Number of Clusters", 
-      x="Number of Clusters (k)",
-      y="Sum of Squares"
-      ) +
-    theme_minimal() +
-    theme(
-      plot.title = element_text(size = 18, face = "bold"),
-      axis.title = element_text(size = 16),
-      axis.text = element_text(size = 14)
-    )
-  print(p1)
-  
-  sil_values <- sapply(k_values, getWSS_SIL, data=data, type="SIL")
-  df <- data.frame(k = k_values, silhouette = sil_values)
-  
-  # Make the plot
-  p2 <- ggplot(df, aes(x = k, y = silhouette)) +
-    geom_point(color = "blue") +
-    geom_line(color = "blue") +
-    labs(
-      title = "Silhouette Score vs Number of Clusters",
-      x = "Number of Clusters",
-      y = "Silhouette Score"
-    ) +
-    theme_minimal() +
-    theme(
-      plot.title = element_text(size = 18, face = "bold"),
-      axis.title = element_text(size = 16),
-      axis.text = element_text(size = 14)
-    )
-  
-  # Arrange in a row
-  grid.arrange(p1, p2,ncol = 2)
-}
+# getWSS_SIL <- function(k, data, type, ts_clusters=NULL){
+#   # dist_matrix <- dist(data, method="DTW")
+#   groc_pharm_clusters <- tsclust(groc_pharm_list, type = "partitional", k = 3, distance = "dtw")
+#   cluster_labels <- ts_clusters@cluster
+#   
+#   if (type == "WSS") {
+#     wss = 0
+#     for (i in 1:k) {
+#       cluster_points <- data[cluster_labels == i, , drop = FALSE]
+#       dist_matrix <- dist(cluster_points, method = "DTW")
+#       wss <- wss + sum(dist_matrix)
+#     }
+#     return(wss)
+#   }
+#   
+#   if (type == "SIL") {
+#     sil_score <- silhouette(cluster_labels, dist(data))
+#     return(mean(sil_score[, 3]))
+#   }
+# }
+# 
+# # plot wss and sil graphs
+# plot_ideal_ts_cluster_graph <- function(data) {
+#   # Run k-means for 2 to 10 clusters
+#   k_values <- 2:10
+#   wss_values <- sapply(k_values, getWSS_SIL, data=data, type="WSS")
+#   
+#   df <- data.frame(wss = wss_values, k_values=k_values)
+#   
+#   p1 <- ggplot(df, aes(x=k_values,y=wss)) +
+#     geom_line(color="blue", size=1) +
+#     geom_point(color="red",size=2) +
+#     labs(
+#       title="WSS vs Number of Clusters", 
+#       x="Number of Clusters (k)",
+#       y="Sum of Squares"
+#       ) +
+#     theme_minimal() +
+#     theme(
+#       plot.title = element_text(size = 18, face = "bold"),
+#       axis.title = element_text(size = 16),
+#       axis.text = element_text(size = 14)
+#     )
+#   print(p1)
+#   
+#   sil_values <- sapply(k_values, getWSS_SIL, data=data, type="SIL")
+#   df <- data.frame(k = k_values, silhouette = sil_values)
+#   
+#   # Make the plot
+#   p2 <- ggplot(df, aes(x = k, y = silhouette)) +
+#     geom_point(color = "blue") +
+#     geom_line(color = "blue") +
+#     labs(
+#       title = "Silhouette Score vs Number of Clusters",
+#       x = "Number of Clusters",
+#       y = "Silhouette Score"
+#     ) +
+#     theme_minimal() +
+#     theme(
+#       plot.title = element_text(size = 18, face = "bold"),
+#       axis.title = element_text(size = 16),
+#       axis.text = element_text(size = 14)
+#     )
+#   
+#   # Arrange in a row
+#   grid.arrange(p1, p2,ncol = 2)
+# }
 
 visualize_multiDim_cluster <- function(data, ncol) {
   # PCA
@@ -111,7 +122,7 @@ visualize_multiDim_cluster <- function(data, ncol) {
     theme_minimal()
   
   # t-SNE
-  tsne_results <- Rtsne(data[, -ncol(data)], perplexity = 30, check_duplicates = FALSE)
+  tsne_results <- Rtsne(data[, -ncol(data)], perplexity = 5, check_duplicates = FALSE)
   df_tsne <- data.frame(tsne_results$Y, cluster = as.factor(data$cluster))
   
   g2 <- ggplot(df_tsne, aes(x = X1, y = X2, color = cluster)) +
@@ -270,24 +281,71 @@ aggregate_mobility_scaled <- time_series_aggregate_df %>%
 summary(aggregate_mobility_scaled)
 
 
-###################### Grouping 1: Time Phase Clustering ######################
+################# Grouping 1: Time Phase Clustering w/dtwclust #################
+
+library(dtwclust)
+conflicts_prefer(dtwclust::as.matrix)
+
+# ts_cluster_data <- aggregate_mobility_scaled %>%
+#   select(all_of(mobility_features))
+# 
+# ts_clusters <- tsclust(ts_cluster_data, type = "partitional", k=4, distance = "dtw")
+# ts_cluster_data$cluster <- as.factor(ts_clusters@cluster)
+# 
+# mobility_clusters <- aggregate_mobility_scaled %>% 
+#   add_column(cluster = factor(ts_clusters@cluster))
+# 
+# 
+# visualize_multiDim_cluster(ts_cluster_data, ncol(ts_cluster_data))
+
+
+
+# Clean and convert to matrix for tsclust
+avg_retail_mat <- ts_df_to_matrix(aggregate_mobility_scaled, "avg_retail")
+groc_pharm_mat <- ts_df_to_matrix(aggregate_mobility_scaled, "avg_grocery_and_pharmacy")
+avg_parks_mat <- ts_df_to_matrix(aggregate_mobility_scaled, "avg_grocery_and_pharmacy")
+avg_transit_mat <- ts_df_to_matrix(aggregate_mobility_scaled, "avg_transit")
+avg_workplaces_mat <- ts_df_to_matrix(aggregate_mobility_scaled, "avg_workplaces")
+avg_residential_mat <- ts_df_to_matrix(aggregate_mobility_scaled, "avg_residential")
+
+
+# Convert to list of time series (one per county)
+groc_pharm_list <- split(groc_pharm_mat, row(groc_pharm_mat))
+
+# Run clustering
+groc_pharm_clusters <- tsclust(groc_pharm_list, type = "partitional", k = 3, distance = "dtw")
+
+# Rebuild the dataframe for visualization
+groc_pharm_df <- as.data.frame(groc_pharm_mat) %>%
+  rownames_to_column("county") %>%
+  mutate(cluster = as.factor(groc_pharm_clusters@cluster))
+
+groc_pharm_numeric <- groc_pharm_df %>%
+  select(-county)
+
+visualize_multiDim_cluster(groc_pharm_numeric, ncol(groc_pharm_numeric))
+
+
+###################### Grouping 2: Time Phase Clustering ######################
+
+library(TSclust)
 
 ts_cluster_data <- aggregate_mobility_scaled %>%
   select(all_of(mobility_features))
 
-# perform kmeans
-# plot_ideal_cluster_graph(cluster_data)
-
-# ts_clusters <- tsclust(cluster_data, type = "partitional", k=3, distance = "dtw")
-
-# mobility_clusters <- aggregate_mobility_scaled
-# mobility_clusters$cluster <- ts_clusters@cluster
-
-
-plot_ideal_cluster_graph(ts_cluster_data)
-# visualize_multiDim_cluster(scaled_census_age_features, ncol(scaled_census_age_features))
+dissim <- diss(ts_cluster_data, "CORT")
+hc <- hclust(dissim, method = "ward.D2")
+plot(hc)  
 
 
 
-mobility_clusters <- aggregate_mobility_scaled %>% 
-  add_column(cluster = factor(ts_clusters@cluster))
+
+
+
+library(tsfeatures)
+mobility_features <- tsfeatures(time_series_list)
+kmeans_result <- kmeans(mobility_features, centers = 3)
+
+
+
+
