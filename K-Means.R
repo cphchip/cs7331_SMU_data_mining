@@ -231,7 +231,7 @@ entropy <- function(cluster, truth, show_table = FALSE) {
   sum(w * e)
 }
 
-############ Additional Helper Functions of anthony_clustering.R ############## ###########
+############ Additional Helper Functions of anthony_clustering.R ##############
 clustering_method <- "ward.D2"
 
 # manually compute wss
@@ -419,7 +419,7 @@ texas_census_per_1000$percent_black      <- texas_census_per_1000$black_pop / te
 texas_census_per_1000$percent_asian      <- texas_census_per_1000$asian_pop / texas_census_per_1000$total_pop * 100
 texas_census_per_1000$percent_hispanic   <- texas_census_per_1000$hispanic_pop / texas_census_per_1000$total_pop * 100
 texas_census_per_1000$percent_amerindian <- texas_census_per_1000$amerindian_pop / texas_census_per_1000$total_pop * 100
-texas_census_per_1000$percent_other    <- texas_census_per_1000$other_race_pop / texas_census_per_1000$total_pop * 100
+texas_census_per_1000$percent_other      <- texas_census_per_1000$other_race_pop / texas_census_per_1000$total_pop * 100
 
 summary(texas_census_per_1000)
 
@@ -463,27 +463,44 @@ kmeans_results <- kmeans(scaled_census_pop_features, centers=k, nstart = 10)
 hclust_results <- hclustering(scaled_census_pop_features, ncenters=k)
 
 # Assign cluster labels to dataset
-scaled_census_pop_features$cluster <- as.factor(kmeans_results$cluster)
+kmeans_scaled_census_pop_features <- scaled_census_pop_features
+kmeans_scaled_census_pop_features$cluster <- as.factor(kmeans_results$cluster)
 
-# Plot silhouette widths
-sil <- silhouette(kmeans_results$cluster, dist_matrix)
-plot(sil)
+hclust_scaled_census_pop_features <- scaled_census_pop_features
+hclust_scaled_census_pop_features$cluster <- as.factor(hclust_results$cluster)
 
 # Assess cluster profiles
 cluster_profiles(kmeans_results)
 
-# plotting with PCA, UMAP, and tsne
-visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
-
-
 ### Unsupervised cluster evaluation ###
 sil <- silhouette(kmeans_results$cluster, dist_matrix)
 plot(sil)
+library(factoextra)
+p1 <- fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix)) +
+  ggtitle("K-Means Silhouette Plot") +
+  theme(
+    plot.title = element_text(size = 18, face = "bold"),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
 
+p2 <- fviz_silhouette(silhouette(hclust_results$cluster, dist_matrix)) +
+  ggtitle("Hierarchical Clustering Silhouette Plot") +
+  theme(
+    plot.title = element_text(size = 18, face = "bold"),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+grid.arrange(p1, p2, ncol = 2)
+
+# plotting with PCA, UMAP, and tsne
+visualize_multiDim_cluster(kmeans_scaled_census_pop_features, ncol(kmeans_scaled_census_pop_features))
 
 ### Clustering Tendency ###
 ggpimage(dist_matrix, order=order(kmeans_results$cluster))
-
+ggVAT(dist_matrix)
+ggiVAT(dist_matrix)
 
 ### Supervised Cluster Evaluation ###
 # Create truth values
@@ -599,6 +616,7 @@ plot_ideal_cluster_graph(scaled_census_age_features)
 dist_matrix <- dist(scaled_census_age_features)
 k <- 3
 kmeans_results <- kmeans(scaled_census_age_features, centers=k, nstart = 10)
+hclust_results <- hclustering(scaled_census_age_features, ncenters=k)
 
 # Assign cluster labels to dataset
 scaled_census_age_features$cluster <- as.factor(kmeans_results$cluster)
@@ -606,12 +624,35 @@ scaled_census_age_features$cluster <- as.factor(kmeans_results$cluster)
 # Assess cluster profiles
 cluster_profiles(kmeans_results)
 
-# plotting with PCA, UMAP, and tsne
-visualize_multiDim_cluster(scaled_census_age_features, ncol(scaled_census_age_features))
-
-# Unsupervised cluster evaluation
+### Unsupervised cluster evaluation ###
 sil <- silhouette(kmeans_results$cluster, dist_matrix)
-plot(sil) # Plot silhouette widths
+plot(sil)
+library(factoextra)
+p1 <- fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix)) +
+  ggtitle("K-Means Silhouette Plot") +
+  theme(
+    plot.title = element_text(size = 18, face = "bold"),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+p2 <- fviz_silhouette(silhouette(hclust_results$cluster, dist_matrix)) +
+  ggtitle("Hierarchical Clustering Silhouette Plot") +
+  theme(
+    plot.title = element_text(size = 18, face = "bold"),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14)
+  )
+
+grid.arrange(p1, p2, ncol = 2)
+
+# plotting with PCA, UMAP, and tsne
+visualize_multiDim_cluster(kmeans_scaled_census_pop_features, ncol(kmeans_scaled_census_pop_features))
+
+### Clustering Tendency ###
+ggpimage(dist_matrix, order=order(kmeans_results$cluster))
+ggVAT(dist_matrix)
+ggiVAT(dist_matrix)
 
 # Check clustering tendency
 ggpimage(dist_matrix, order=order(kmeans_results$cluster))
@@ -667,14 +708,16 @@ scaled_census_income_features$cluster <- as.factor(kmeans_results$cluster)
 # Assess cluster profiles
 cluster_profiles(kmeans_results)
 
-# plotting with PCA, UMAP, and tsne
-visualize_multiDim_cluster(scaled_census_income_features, ncol(scaled_census_income_features))
-
-# Unsupervised cluster evaluation
+### Unsupervised cluster evaluation ###
 sil <- silhouette(kmeans_results$cluster, dist_matrix)
-plot(sil) # Plot silhouette widths
+plot(sil)
+library(factoextra)
+fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix))
 
-# Check clustering tendency
+# plotting with PCA, UMAP, and tsne
+visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
+
+### Check clustering tendency ###
 ggpimage(dist_matrix, order=order(kmeans_results$cluster))
 
 # Map our results to the county map of Texas
@@ -725,14 +768,16 @@ scaled_census_employed_features$cluster <- as.factor(kmeans_results$cluster)
 # Assess cluster profiles
 cluster_profiles(kmeans_results)
 
-# plotting with PCA, UMAP, and tsne
-visualize_multiDim_cluster(scaled_census_employed_features, ncol(scaled_census_employed_features))
-
-# Unsupervised cluster evaluation
+### Unsupervised cluster evaluation ###
 sil <- silhouette(kmeans_results$cluster, dist_matrix)
-plot(sil) # Plot silhouette widths
+plot(sil)
+library(factoextra)
+fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix))
 
-# Check clustering tendency
+# plotting with PCA, UMAP, and tsne
+visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
+
+### Check clustering tendency ###
 ggpimage(dist_matrix, order=order(kmeans_results$cluster))
 
 # Map our results to the county map of Texas
