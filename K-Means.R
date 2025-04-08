@@ -197,6 +197,40 @@ entropy <- function(cluster, truth, show_table = FALSE) {
   sum(w * e)
 }
 
+purity <- function(cluster, truth, show_table = FALSE) {
+  if (length(cluster) != length(truth))
+    stop("Cluster vector and ground truth vectors are not of the same length!")
+  
+  # tabulate
+  tbl <- table(cluster, truth)
+  if(show_table)
+    print(tbl)
+  
+  # find majority class
+  majority <- apply(tbl, 1, max)
+  sum(majority) / length(cluster)
+}
+
+entropy <- function(cluster, truth, show_table = FALSE) {
+  if (length(cluster) != length(truth))
+    stop("Cluster vector and ground truth vectors are not of the same length!")
+  
+  # calculate membership probability of cluster to class
+  tbl <- table(cluster, truth)
+  p <- sweep(tbl, 2, colSums(tbl), "/")
+  
+  if(show_table)
+    print(p)
+  
+  # calculate cluster entropy
+  e <- -p * log(p, 2)
+  e <- rowSums(e, na.rm = TRUE)
+  
+  # weighted sum over clusters
+  w <- table(cluster) / length(cluster)
+  sum(w * e)
+}
+
 
 ################################## Data Prep ##################################
 
@@ -280,7 +314,7 @@ texas_census_per_1000$percent_black      <- texas_census_per_1000$black_pop / te
 texas_census_per_1000$percent_asian      <- texas_census_per_1000$asian_pop / texas_census_per_1000$total_pop * 100
 texas_census_per_1000$percent_hispanic   <- texas_census_per_1000$hispanic_pop / texas_census_per_1000$total_pop * 100
 texas_census_per_1000$percent_amerindian <- texas_census_per_1000$amerindian_pop / texas_census_per_1000$total_pop * 100
-
+texas_census_per_1000$percent_other    <- texas_census_per_1000$other_race_pop / texas_census_per_1000$total_pop * 100
 
 summary(texas_census_per_1000)
 
@@ -335,56 +369,98 @@ cluster_profiles(kmeans_results)
 # plotting with PCA, UMAP, and tsne
 visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
 
-# Unsupervised cluster evaluation
-sil <- silhouette(kmeans_results$cluster, dist_matrix)
-plot(sil) # Plot silhouette widths
 
-# Check clustering tendency
+### Unsupervised cluster evaluation ###
+sil <- silhouette(kmeans_results$cluster, dist_matrix)
+plot(sil)
+
+
+### Clustering Tendency ###
 ggpimage(dist_matrix, order=order(kmeans_results$cluster))
 
 
-# Supervised Cluster Evaluation
+### Supervised Cluster Evaluation ###
+# Create truth values
+percent_race_features <- c(
+  "percent_white",
+  "percent_black",
+  "percent_asian",
+  "percent_hispanic",
+  "percent_amerindian"
+)
+
+supervised_eval_df <- texas_census_per_1000 %>%
+  select(
+    "county",
+    all_of(percent_race_features),
+  )
+
+supervised_eval_df$cluster <- as.factor(kmeans_results$cluster)
+
+# Based on our cluster profiles, these appear to be the truth assignments
+race_to_cluster <- c(
+  percent_other      = 1,
+  percent_white      = 2,
+  percent_amerindian = 3,
+  percent_black      = 4,
+  percent_hispanic   = 5,
+  percent_asian      = 6
+)
+
+# pull the percent race features from supervised_eval_df into race_percent_df
+race_percent_df <- supervised_eval_df[percent_race_features]
+
+# Create a column to hold the majority race for the county
+max_race_name <- apply(race_percent_df, 1, function(row) {
+  names(row)[which.max(row)]
+})
+
+# Create a dataframe for performing supervised evaluation
+supervised_eval_df$max_race <- max_race_name
+supervised_eval_df$truth_cluster <- race_to_cluster[supervised_eval_df$max_race]
+
+# Using 4 and 7 here, just want to be different from 6 which was my Kmeans number
 random_4 <- sample(1:4, nrow(scaled_census_pop_features), replace = TRUE)
-random_6 <- sample(1:6, nrow(scaled_census_pop_features), replace = TRUE)
+random_7 <- sample(1:6, nrow(scaled_census_pop_features), replace = TRUE)
 
-# r <- rbind(
-#   truth = c(
-#     unlist(fpc::cluster.stats(dist_matrix, truth, 
-#                               truth, compareonly = TRUE)),
-#     purity = purity(truth, truth),
-#     entropy = entropy(truth, truth)
-#   ),
-#   
-#   kmeans_7 = c(
-#     unlist(fpc::cluster.stats(dist_matrix, kmeans_results$cluster, 
-#                               truth, compareonly = TRUE)),
-#     purity = purity(kmeans_results$cluster, truth),
-#     entropy = entropy(kmeans_results$cluster, truth)
-#   ),
-#   hc_4 = c(
-#     unlist(fpc::cluster.stats(dist_matrix, hc_4, 
-#                               truth, compareonly = TRUE)),
-#     purity = purity(hc_4, truth),
-#     entropy = entropy(hc_4, truth)
-#   ),
-#   random_4 = c(
-#     unlist(fpc::cluster.stats(dist_matrix, random_4, 
-#                               truth, compareonly = TRUE)),
-#     purity = purity(random_4, truth),
-#     entropy = entropy(random_4, truth)
-#   ),
-#   random_6 = c(
-#     unlist(fpc::cluster.stats(dist_matrix, random_6, 
-#                               truth, compareonly = TRUE)),
-#     purity = purity(random_6, truth),
-#     entropy = entropy(random_6, truth)
-#   )
-# )
-# r
+# Truth values as taken from my assignment from cluster profiles
+truth <- as.integer(supervised_eval_df$truth_cluster)
 
-# Clustering Tendency
-# d_shapes <- dist(scale(scaled_census_pop_features))
-# ggVAT(d_shapes)
+# Code from Introduction to Data Mining 7.5. Modified for my content.
+r <- rbind(
+  truth = c(
+    unlist(fpc::cluster.stats(dist_matrix, truth,
+                              truth, compareonly = TRUE)),
+    purity = purity(truth, truth),
+    entropy = entropy(truth, truth)
+  ),
+
+  kmeans_6 = c(
+    unlist(fpc::cluster.stats(dist_matrix, kmeans_results$cluster,
+                              truth, compareonly = TRUE)),
+    purity = purity(kmeans_results$cluster, truth),
+    entropy = entropy(kmeans_results$cluster, truth)
+  ),
+  # hc_4 = c(
+  #   unlist(fpc::cluster.stats(dist_matrix, hc_4,
+  #                             truth, compareonly = TRUE)),
+  #   purity = purity(hc_4, truth),
+  #   entropy = entropy(hc_4, truth)
+  # ),
+  random_4 = c(
+    unlist(fpc::cluster.stats(dist_matrix, random_4,
+                              truth, compareonly = TRUE)),
+    purity = purity(random_4, truth),
+    entropy = entropy(random_4, truth)
+  ),
+  random_7 = c(
+    unlist(fpc::cluster.stats(dist_matrix, random_7,
+                              truth, compareonly = TRUE)),
+    purity = purity(random_7, truth),
+    entropy = entropy(random_7, truth)
+  )
+)
+r
 
 # Map our results to the county map of Texas
 cases_TX_clust_race <- texas_state_census_df %>% 
@@ -534,7 +610,7 @@ scaled_census_employed_features <- scaled_tx_census_features %>%
 plot_ideal_cluster_graph(scaled_census_employed_features)
 
 dist_matrix <- dist(scaled_census_employed_features)
-k <- 5
+k <- 4
 kmeans_results <- kmeans(scaled_census_employed_features, centers=k, nstart = 10)
 
 # Assign cluster labels to dataset
