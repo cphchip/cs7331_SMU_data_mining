@@ -231,6 +231,111 @@ entropy <- function(cluster, truth, show_table = FALSE) {
   sum(w * e)
 }
 
+############ Additional Helper Functions of anthony_clustering.R ############## ###########
+clustering_method <- "ward.D2"
+
+# manually compute wss
+better_compute_wss <- function(data, clusters) {
+  totwss <- 0
+  for (k in unique(clusters)) {
+    cluster_points <- data[clusters == k, ]
+    centroid <- colMeans(cluster_points)
+    for (i in 1:nrow(cluster_points)) {
+      wss <- 0
+      for (j in 1:ncol(cluster_points)) {
+        pt <- cluster_points[i,][j]
+        wss <- wss + (pt[[1]][1] - centroid[[j]][1])^2
+      }
+      totwss <- totwss + wss
+    }
+  }
+  return(totwss)
+}
+
+# plots wss using my compute_wss()
+plot_wss_graph <- function(mydata, max_k, mytitle) {
+  d <- dist(mydata)
+  hc <- hclust(d, method=clustering_method)
+  all_wss <- c()
+  all_sil <- c()
+  for (k in 2:max_k)
+  {
+    
+    clusters <- cutree(hc, k=k)
+    
+    # using wss and elbow
+    wss_total <- better_compute_wss(mydata, clusters)
+    all_wss <- c(all_wss, wss_total)
+    
+    # using sil
+    sil <- getSIL(clusters,d)
+    all_sil <- c(all_sil, sil)
+  }
+  k_values <- 2:max_k
+  
+  df1 <- data.frame(wss = all_wss,
+                    k_values=k_values)
+  
+  # elbow method using wss
+  g1 <- ggplot(df1, aes(x=k_values,y=wss)) +
+    geom_line(color="blue", size=1) +
+    geom_point(color="red",size=2) +
+    labs(title=paste("WSS vs Number of Clusters: ",mytitle), x="Number of Clusters (k)",y="Sum of Squares") +
+    scale_x_discrete(limits = factor(1:10)) +
+    theme_minimal() + 
+    theme(
+      plot.title = element_text(size = 18, face = "bold"),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14)
+    )
+  
+  df2 <- data.frame(sil = all_sil,
+                    k_values=k_values)
+  
+  g2 <- ggplot(df2, aes(x=k_values, y=sil)) +
+    geom_point(color = "blue") +
+    geom_line(color = "blue") +
+    labs(
+      title = paste("Silhouette Score vs Number of Clusters", mytitle),
+      x = "Number of Clusters",
+      y = "Silhouette Score"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 18, face = "bold"),
+      axis.title = element_text(size = 16),
+      axis.text = element_text(size = 14) 
+    )
+  
+  # arrange in a row
+  grid.arrange(g1, g2, ncol=2)
+  
+  
+}
+
+hclustering <- function(mydata,ncenters) {
+  d <- dist(mydata)
+  hc <- hclust(d, method=clustering_method)
+  
+  results <- list()
+  
+  # results$cluster = vectors of integers indicating which cluster each observation belongs to
+  clusters <- cutree(hc, ncenters)
+  results$cluster <- clusters
+  
+  # results$center = a matrix of cluster centers, one row for each cluster
+  center <- matrix(numeric(0),nrow=0,ncol=ncol(mydata))
+  for (k in unique(clusters)) {
+    cluster_points <- mydata[clusters == k, , drop = FALSE]
+    center <- rbind(center,colMeans(cluster_points))
+  }
+  results$centers <- center
+  return(results)
+}
+
+getSIL <- function(cluster, mydist) {
+  return(mean(silhouette(cluster, mydist)[,3]))
+}
 
 ################################## Data Prep ##################################
 
@@ -355,6 +460,7 @@ plot_ideal_cluster_graph(scaled_census_pop_features)
 dist_matrix <- dist(scaled_census_pop_features)
 k <- 6
 kmeans_results <- kmeans(scaled_census_pop_features, centers=k, nstart = 10)
+hclust_results <- hclustering(scaled_census_pop_features, ncenters=k)
 
 # Assign cluster labels to dataset
 scaled_census_pop_features$cluster <- as.factor(kmeans_results$cluster)
@@ -441,12 +547,12 @@ r <- rbind(
     purity = purity(kmeans_results$cluster, truth),
     entropy = entropy(kmeans_results$cluster, truth)
   ),
-  # hc_4 = c(
-  #   unlist(fpc::cluster.stats(dist_matrix, hc_4,
-  #                             truth, compareonly = TRUE)),
-  #   purity = purity(hc_4, truth),
-  #   entropy = entropy(hc_4, truth)
-  # ),
+  hc_4 = c(
+    unlist(fpc::cluster.stats(dist_matrix, hclust_results$cluster,
+                             truth, compareonly = TRUE)),
+     purity = purity(hclust_results$cluster, truth),
+     entropy = entropy(hclust_results$cluster, truth)
+   ),
   random_4 = c(
     unlist(fpc::cluster.stats(dist_matrix, random_4,
                               truth, compareonly = TRUE)),

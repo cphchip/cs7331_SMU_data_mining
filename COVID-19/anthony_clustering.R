@@ -102,16 +102,6 @@ set.seed(1015)
 clustering_method <- "ward.D2"
 
 # manually compute wss
-compute_wss <- function(data, clusters){
-  wss <- 0
-  for (k in unique(clusters)) {
-    cluster_points <- data[clusters == k, , drop = FALSE]
-    centroid <- colMeans(cluster_points)
-    wss <- wss + sum(rowSums((cluster_points - centroid)^2))
-  }
-  return(wss)
-}
-
 better_compute_wss <- function(data, clusters) {
   totwss <- 0
   for (k in unique(clusters)) {
