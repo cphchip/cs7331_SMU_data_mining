@@ -72,7 +72,7 @@ getWSS_SIL <- function(k, data, type){
 }
 
 # plot wss and sil graphs
-plot_ideal_cluster_graph <- function(data) {
+plot_ideal_cluster_graph <- function(data, mytitle) {
   # Run k-means for 2 to 10 clusters
   k_values <- 2:10
   wss_values <- sapply(k_values, getWSS_SIL, data=data, type="WSS")
@@ -83,7 +83,10 @@ plot_ideal_cluster_graph <- function(data) {
   p1 <- ggplot(df, aes(x=k_values,y=wss)) +
     geom_line(color="blue", size=1) +
     geom_point(color="red",size=2) +
-    labs(title="WSS vs Number of Clusters", x="Number of Clusters (k)",y="Sum of Squares") +
+    labs(
+      title=paste("K-means WSS vs Number of Clusters - ",mytitle), 
+      x="Number of Clusters (k)",
+      y="Sum of Squares") +
     theme_minimal() +
     theme(
       plot.title = element_text(size = 18, face = "bold"),
@@ -100,9 +103,9 @@ plot_ideal_cluster_graph <- function(data) {
     geom_point(color = "blue") +
     geom_line(color = "blue") +
     labs(
-      title = "Silhouette Score vs Number of Clusters",
-      x = "Number of Clusters",
-      y = "Silhouette Score"
+      title=paste("K-Means Silhouette Score vs Number of Clusters - ",mytitle),
+      x="Number of Clusters",
+      y="Silhouette Score"
     ) +
     theme_minimal() +
     theme(
@@ -115,14 +118,14 @@ plot_ideal_cluster_graph <- function(data) {
   grid.arrange(p1, p2,ncol = 2)
 }
 
-visualize_multiDim_cluster <- function(data, ncol) {
+visualize_multiDim_cluster <- function(data, ncol, mytitle) {
   # PCA
   pca <- prcomp(data[,-ncol(data)], center=TRUE, scale.=TRUE)
   df_pca <- data.frame(pca$x[,1:2], cluster = as.factor(data$cluster))
   
   g1 <- ggplot(df_pca, aes(x = PC1, y = PC2, color = cluster)) +
     geom_point(size = 3) +
-    labs(title = "PCA") +
+    labs(title=paste("PCA Visualization of Clusters - ",mytitle)) +
     theme_minimal()
   
   # t-SNE
@@ -131,7 +134,7 @@ visualize_multiDim_cluster <- function(data, ncol) {
   
   g2 <- ggplot(df_tsne, aes(x = X1, y = X2, color = cluster)) +
     geom_point(size = 3) +
-    labs(title = "t-SNE") +
+    labs(title=paste("t-SNE Visualization of Clusters - ",mytitle)) +
     theme_minimal()
   
   # UMAP
@@ -140,20 +143,24 @@ visualize_multiDim_cluster <- function(data, ncol) {
   
   g3 <- ggplot(df_umap, aes(x = X1, y = X2, color = cluster)) +
     geom_point(size = 3) +
-    labs(title = "UMAP") +
+    labs(title=paste("UMAP Visualization of Clusters - ",mytitle)) +
     theme_minimal()
   
   # Arrange in a row
   grid.arrange(g1, g2, g3, ncol = 3)
 }
 
-cluster_profiles <- function(results) {
+cluster_profiles <- function(results, mytitle) {
   ggplot(pivot_longer(as_tibble(results$centers,  rownames = "cluster"), 
                       cols = colnames(results$centers)), 
          aes(y = name, x = value, fill = cluster)) +
     geom_bar(stat = "identity") +
     facet_grid(cols = vars(cluster)) +
-    labs(y = "feature", x = "z-scores", title = "Cluster Profiles") + 
+    labs(
+      y = "feature", 
+      x = "z-scores", 
+      title=paste("Cluster Profiles - ",mytitle)
+      ) + 
     guides(fill="none") + 
     theme(
       plot.title = element_text(size = 18, face = "bold"),
@@ -296,7 +303,7 @@ plot_wss_graph <- function(mydata, max_k, mytitle) {
     geom_point(color = "blue") +
     geom_line(color = "blue") +
     labs(
-      title = paste("Silhouette Score vs Number of Clusters", mytitle),
+      title = paste("K-means Silhouette Score vs Number of Clusters", mytitle),
       x = "Number of Clusters",
       y = "Silhouette Score"
     ) +
@@ -451,11 +458,13 @@ pop_features <- c(
   "other_race_pop_per_1000"
 )
 
+title = "Ethnicity"
+
 scaled_census_pop_features <- scaled_tx_census_features %>%
   select(all_of(pop_features))
 
 # perform kmeans
-plot_ideal_cluster_graph(scaled_census_pop_features)
+plot_ideal_cluster_graph(scaled_census_pop_features,title)
 
 dist_matrix <- dist(scaled_census_pop_features)
 k <- 6
@@ -470,14 +479,12 @@ hclust_scaled_census_pop_features <- scaled_census_pop_features
 hclust_scaled_census_pop_features$cluster <- as.factor(hclust_results$cluster)
 
 # Assess cluster profiles
-cluster_profiles(kmeans_results)
+cluster_profiles(kmeans_results, title)
 
 ### Unsupervised cluster evaluation ###
-sil <- silhouette(kmeans_results$cluster, dist_matrix)
-plot(sil)
 library(factoextra)
 p1 <- fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix)) +
-  ggtitle("K-Means Silhouette Plot") +
+  ggtitle(paste("K-Means Silhouette Plot ",title)) +
   theme(
     plot.title = element_text(size = 18, face = "bold"),
     axis.title = element_text(size = 16),
@@ -485,7 +492,7 @@ p1 <- fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix)) +
   )
 
 p2 <- fviz_silhouette(silhouette(hclust_results$cluster, dist_matrix)) +
-  ggtitle("Hierarchical Clustering Silhouette Plot") +
+  ggtitle(paste("Hierarchical Clustering Silhouette Plot ",title)) +
   theme(
     plot.title = element_text(size = 18, face = "bold"),
     axis.title = element_text(size = 16),
@@ -495,11 +502,13 @@ p2 <- fviz_silhouette(silhouette(hclust_results$cluster, dist_matrix)) +
 grid.arrange(p1, p2, ncol = 2)
 
 # plotting with PCA, UMAP, and tsne
-visualize_multiDim_cluster(kmeans_scaled_census_pop_features, ncol(kmeans_scaled_census_pop_features))
+visualize_multiDim_cluster(
+  kmeans_scaled_census_pop_features, 
+  ncol(kmeans_scaled_census_pop_features),
+  title
+  )
 
 ### Clustering Tendency ###
-ggpimage(dist_matrix, order=order(kmeans_results$cluster))
-ggVAT(dist_matrix)
 ggiVAT(dist_matrix)
 
 ### Supervised Cluster Evaluation ###
@@ -607,11 +616,13 @@ age_features <- c(
   "female_under_65_per_1000"
 )
 
+title = "Age"
+
 scaled_census_age_features <- scaled_tx_census_features %>%
   select(all_of(age_features))
 
 # perform kmeans
-plot_ideal_cluster_graph(scaled_census_age_features)
+plot_ideal_cluster_graph(scaled_census_age_features,title)
 
 dist_matrix <- dist(scaled_census_age_features)
 k <- 3
@@ -622,14 +633,12 @@ hclust_results <- hclustering(scaled_census_age_features, ncenters=k)
 scaled_census_age_features$cluster <- as.factor(kmeans_results$cluster)
 
 # Assess cluster profiles
-cluster_profiles(kmeans_results)
+cluster_profiles(kmeans_results, title)
 
 ### Unsupervised cluster evaluation ###
-sil <- silhouette(kmeans_results$cluster, dist_matrix)
-plot(sil)
 library(factoextra)
 p1 <- fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix)) +
-  ggtitle("K-Means Silhouette Plot") +
+  ggtitle(paste("K-Means Silhouette Plot ",title)) +
   theme(
     plot.title = element_text(size = 18, face = "bold"),
     axis.title = element_text(size = 16),
@@ -637,7 +646,7 @@ p1 <- fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix)) +
   )
 
 p2 <- fviz_silhouette(silhouette(hclust_results$cluster, dist_matrix)) +
-  ggtitle("Hierarchical Clustering Silhouette Plot") +
+  ggtitle(paste("Hierarchical Clustering Silhouette Plot ",title)) +
   theme(
     plot.title = element_text(size = 18, face = "bold"),
     axis.title = element_text(size = 16),
@@ -647,11 +656,13 @@ p2 <- fviz_silhouette(silhouette(hclust_results$cluster, dist_matrix)) +
 grid.arrange(p1, p2, ncol = 2)
 
 # plotting with PCA, UMAP, and tsne
-visualize_multiDim_cluster(kmeans_scaled_census_pop_features, ncol(kmeans_scaled_census_pop_features))
+visualize_multiDim_cluster(
+  kmeans_scaled_census_pop_features, 
+  ncol(kmeans_scaled_census_pop_features),
+  title
+  )
 
 ### Clustering Tendency ###
-ggpimage(dist_matrix, order=order(kmeans_results$cluster))
-ggVAT(dist_matrix)
 ggiVAT(dist_matrix)
 
 # Check clustering tendency
@@ -672,122 +683,122 @@ ggplot(counties_polygon_TX_clust, aes(long, lat)) +
 
 ############################# Grouping 3: Income ##############################
 
-income_features <- c(
-  "households_per_1000",
-  "income_less_10000_per_1000",
-  "income_10000_14999_per_1000",
-  "income_15000_19999_per_1000",
-  "income_20000_24999_per_1000",
-  "income_25000_29999_per_1000",
-  "income_30000_34999_per_1000",
-  "income_35000_39999_per_1000",
-  "income_40000_44999_per_1000",
-  "income_45000_49999_per_1000",
-  "income_50000_59999_per_1000",
-  "income_60000_74999_per_1000",
-  "income_75000_99999_per_1000",
-  "income_100000_124999_per_1000",
-  "income_125000_149999_per_1000",
-  "income_150000_199999_per_1000",
-  "income_200000_or_more_per_1000"
-  )
-
-scaled_census_income_features <- scaled_tx_census_features %>%
-  select(all_of(income_features))
-
-# perform kmeans
-plot_ideal_cluster_graph(scaled_census_income_features)
-
-dist_matrix <- dist(scaled_census_income_features)
-k <- 5
-kmeans_results <- kmeans(scaled_census_income_features, centers=k, nstart = 10)
-
-# Assign cluster labels to dataset
-scaled_census_income_features$cluster <- as.factor(kmeans_results$cluster)
-
-# Assess cluster profiles
-cluster_profiles(kmeans_results)
-
-### Unsupervised cluster evaluation ###
-sil <- silhouette(kmeans_results$cluster, dist_matrix)
-plot(sil)
-library(factoextra)
-fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix))
-
-# plotting with PCA, UMAP, and tsne
-visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
-
-### Check clustering tendency ###
-ggpimage(dist_matrix, order=order(kmeans_results$cluster))
-
-# Map our results to the county map of Texas
-cases_TX_clust_race <- texas_state_census_df %>% 
-  add_column(cluster = factor(kmeans_results$cluster))
-
-counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust_race, 
-                                        join_by(county))
-
-ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
-  geom_polygon(aes(group = group, fill = cluster)) +
-  coord_quickmap() + 
-  labs(title = "Texas Map with Income Clustered Counties")
+# income_features <- c(
+#   "households_per_1000",
+#   "income_less_10000_per_1000",
+#   "income_10000_14999_per_1000",
+#   "income_15000_19999_per_1000",
+#   "income_20000_24999_per_1000",
+#   "income_25000_29999_per_1000",
+#   "income_30000_34999_per_1000",
+#   "income_35000_39999_per_1000",
+#   "income_40000_44999_per_1000",
+#   "income_45000_49999_per_1000",
+#   "income_50000_59999_per_1000",
+#   "income_60000_74999_per_1000",
+#   "income_75000_99999_per_1000",
+#   "income_100000_124999_per_1000",
+#   "income_125000_149999_per_1000",
+#   "income_150000_199999_per_1000",
+#   "income_200000_or_more_per_1000"
+#   )
+# 
+# scaled_census_income_features <- scaled_tx_census_features %>%
+#   select(all_of(income_features))
+# 
+# # perform kmeans
+# plot_ideal_cluster_graph(scaled_census_income_features)
+# 
+# dist_matrix <- dist(scaled_census_income_features)
+# k <- 5
+# kmeans_results <- kmeans(scaled_census_income_features, centers=k, nstart = 10)
+# 
+# # Assign cluster labels to dataset
+# scaled_census_income_features$cluster <- as.factor(kmeans_results$cluster)
+# 
+# # Assess cluster profiles
+# cluster_profiles(kmeans_results,title)
+# 
+# ### Unsupervised cluster evaluation ###
+# sil <- silhouette(kmeans_results$cluster, dist_matrix)
+# plot(sil)
+# library(factoextra)
+# fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix))
+# 
+# # plotting with PCA, UMAP, and tsne
+# visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
+# 
+# ### Check clustering tendency ###
+# ggpimage(dist_matrix, order=order(kmeans_results$cluster))
+# 
+# # Map our results to the county map of Texas
+# cases_TX_clust_race <- texas_state_census_df %>% 
+#   add_column(cluster = factor(kmeans_results$cluster))
+# 
+# counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust_race, 
+#                                         join_by(county))
+# 
+# ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
+#   geom_polygon(aes(group = group, fill = cluster)) +
+#   coord_quickmap() + 
+#   labs(title = "Texas Map with Income Clustered Counties")
 
 
 ########################### Grouping 4: Employment ############################
 
-employed_features <- c(
-  "employed_agriculture_forestry_fishing_hunting_mining",
-  "employed_arts_entertainment_recreation_accommodation_food",     
-  "employed_construction",                                         
-  "employed_education_health_social",                              
-  "employed_finance_insurance_real_estate",                        
-  "employed_information",                                          
-  "employed_manufacturing",                                        
-  "employed_other_services_not_public_admin",                      
-  "employed_public_administration",                                
-  "employed_retail_trade",                                         
-  "employed_science_management_admin_waste",                       
-  "employed_transportation_warehousing_utilities",                 
-  "employed_wholesale_trade",
-  "unemployed_pop"
-)
-
-scaled_census_employed_features <- scaled_tx_census_features %>%
-  select(all_of(employed_features))
-
-# perform kmeans
-plot_ideal_cluster_graph(scaled_census_employed_features)
-
-dist_matrix <- dist(scaled_census_employed_features)
-k <- 4
-kmeans_results <- kmeans(scaled_census_employed_features, centers=k, nstart = 10)
-
-# Assign cluster labels to dataset
-scaled_census_employed_features$cluster <- as.factor(kmeans_results$cluster)
-
-# Assess cluster profiles
-cluster_profiles(kmeans_results)
-
-### Unsupervised cluster evaluation ###
-sil <- silhouette(kmeans_results$cluster, dist_matrix)
-plot(sil)
-library(factoextra)
-fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix))
-
-# plotting with PCA, UMAP, and tsne
-visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
-
-### Check clustering tendency ###
-ggpimage(dist_matrix, order=order(kmeans_results$cluster))
-
-# Map our results to the county map of Texas
-cases_TX_clust_race <- texas_state_census_df %>% 
-  add_column(cluster = factor(kmeans_results$cluster))
-
-counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust_race, 
-                                        join_by(county))
-
-ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
-  geom_polygon(aes(group = group, fill = cluster)) +
-  coord_quickmap() + 
-  labs(title = "Texas Map with Employment Clustered Counties")
+# employed_features <- c(
+#   "employed_agriculture_forestry_fishing_hunting_mining",
+#   "employed_arts_entertainment_recreation_accommodation_food",     
+#   "employed_construction",                                         
+#   "employed_education_health_social",                              
+#   "employed_finance_insurance_real_estate",                        
+#   "employed_information",                                          
+#   "employed_manufacturing",                                        
+#   "employed_other_services_not_public_admin",                      
+#   "employed_public_administration",                                
+#   "employed_retail_trade",                                         
+#   "employed_science_management_admin_waste",                       
+#   "employed_transportation_warehousing_utilities",                 
+#   "employed_wholesale_trade",
+#   "unemployed_pop"
+# )
+# 
+# scaled_census_employed_features <- scaled_tx_census_features %>%
+#   select(all_of(employed_features))
+# 
+# # perform kmeans
+# plot_ideal_cluster_graph(scaled_census_employed_features)
+# 
+# dist_matrix <- dist(scaled_census_employed_features)
+# k <- 4
+# kmeans_results <- kmeans(scaled_census_employed_features, centers=k, nstart = 10)
+# 
+# # Assign cluster labels to dataset
+# scaled_census_employed_features$cluster <- as.factor(kmeans_results$cluster)
+# 
+# # Assess cluster profiles
+# cluster_profiles(kmeans_results, title)
+# 
+# ### Unsupervised cluster evaluation ###
+# sil <- silhouette(kmeans_results$cluster, dist_matrix)
+# plot(sil)
+# library(factoextra)
+# fviz_silhouette(silhouette(kmeans_results$cluster, dist_matrix))
+# 
+# # plotting with PCA, UMAP, and tsne
+# visualize_multiDim_cluster(scaled_census_pop_features, ncol(scaled_census_pop_features))
+# 
+# ### Check clustering tendency ###
+# ggpimage(dist_matrix, order=order(kmeans_results$cluster))
+# 
+# # Map our results to the county map of Texas
+# cases_TX_clust_race <- texas_state_census_df %>% 
+#   add_column(cluster = factor(kmeans_results$cluster))
+# 
+# counties_polygon_TX_clust <- right_join(counties_polygon_TX, cases_TX_clust_race, 
+#                                         join_by(county))
+# 
+# ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
+#   geom_polygon(aes(group = group, fill = cluster)) +
+#   coord_quickmap() + 
+#   labs(title = "Texas Map with Employment Clustered Counties")

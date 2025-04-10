@@ -19,6 +19,15 @@ counties_polygon <- as_tibble(map_data("county"))
 counties_polygon_TX <- counties_polygon %>% dplyr::filter(region == "texas") %>% 
   rename(c(county = subregion)) 
 
+# Import the mobility dataset
+mobility_df <- read_csv("Global_Mobility_Report.csv")
+
+#' In order to enable joining the census data to the mobility data I needed a 
+#' lookup table of State name to it's abbreviation. Boy Scouts to the rescue!
+#' https://www.scouting.org/resources/los/states/
+state_to_postal <- read_csv("state_to_postal_code(Sheet1).csv")
+head(state_to_postal)
+
 
 ############################### Helper Functions ############################### 
 
@@ -44,8 +53,19 @@ ts_df_to_matrix <- function(df, feature) {
   return(mat)
 }
 
+matrix_to_ts_df <- function(df, feature_name = "value") {
+  df %>%
+    pivot_longer(
+      cols = -c(county, cluster),   # Keep both county and cluster as-is
+      names_to = "date",
+      values_to = feature_name
+    ) %>%
+    mutate(date = as.Date(date))
+}
+
+
 # Perform time-series clustering
-run_ts_clustering <- function(mat) {
+run_ts_clustering <- function(mat, mytitle) {
   # Convert to list of time series (one per county)
   mat_as_list <- split(mat, row(mat))
   
@@ -60,86 +80,21 @@ run_ts_clustering <- function(mat) {
   numeric_data <- clustered_df %>%
     select(-county)
   
-  visualize_multiDim_cluster(numeric_data, ncol(numeric_data))
-}
-
-getWSS_SIL <- function(k, data, type, ts_clusters=NULL){
-  # dist_matrix <- dist(data, method="DTW")
-  groc_pharm_clusters <- tsclust(groc_pharm_list, type = "partitional", k = 3, distance = "dtw")
-  cluster_labels <- ts_clusters@cluster
-
-  if (type == "WSS") {
-    wss = 0
-    for (i in 1:k) {
-      cluster_points <- data[cluster_labels == i, , drop = FALSE]
-      dist_matrix <- dist(cluster_points, method = "DTW")
-      wss <- wss + sum(dist_matrix)
-    }
-    return(wss)
-  }
-
-  if (type == "SIL") {
-    sil_score <- silhouette(cluster_labels, dist(data))
-    return(mean(sil_score[, 3]))
-  }
-}
-
-# plot wss and sil graphs
-plot_ideal_ts_cluster_graph <- function(data) {
-  # Run k-means for 2 to 10 clusters
-  k_values <- 2:10
-  wss_values <- sapply(k_values, getWSS_SIL, data=data, type="WSS")
-
-  df <- data.frame(wss = wss_values, k_values=k_values)
-
-  p1 <- ggplot(df, aes(x=k_values,y=wss)) +
-    geom_line(color="blue", size=1) +
-    geom_point(color="red",size=2) +
-    labs(
-      title="WSS vs Number of Clusters",
-      x="Number of Clusters (k)",
-      y="Sum of Squares"
-      ) +
-    theme_minimal() +
-    theme(
-      plot.title = element_text(size = 18, face = "bold"),
-      axis.title = element_text(size = 16),
-      axis.text = element_text(size = 14)
-    )
-  print(p1)
-
-  sil_values <- sapply(k_values, getWSS_SIL, data=data, type="SIL")
-  df <- data.frame(k = k_values, silhouette = sil_values)
-
-  # Make the plot
-  p2 <- ggplot(df, aes(x = k, y = silhouette)) +
-    geom_point(color = "blue") +
-    geom_line(color = "blue") +
-    labs(
-      title = "Silhouette Score vs Number of Clusters",
-      x = "Number of Clusters",
-      y = "Silhouette Score"
-    ) +
-    theme_minimal() +
-    theme(
-      plot.title = element_text(size = 18, face = "bold"),
-      axis.title = element_text(size = 16),
-      axis.text = element_text(size = 14)
-    )
-
-  # Arrange in a row
-  grid.arrange(p1, p2,ncol = 2)
+  visualize_multiDim_cluster(numeric_data, ncol(numeric_data), mytitle)
+  clustered_df <- clustered_df %>%
+    select(county, cluster)
+  return(clustered_df)
 }
 
 
-visualize_multiDim_cluster <- function(data, ncol) {
+visualize_multiDim_cluster <- function(data, ncol, mytitle) {
   # PCA
   pca <- prcomp(data[,-ncol(data)], center=TRUE, scale.=TRUE)
   df_pca <- data.frame(pca$x[,1:2], cluster = as.factor(data$cluster))
   
   g1 <- ggplot(df_pca, aes(x = PC1, y = PC2, color = cluster)) +
     geom_point(size = 3) +
-    labs(title = "PCA") +
+    labs(title = paste("PCA - ",mytitle)) +
     theme_minimal()
   
   # t-SNE
@@ -148,7 +103,7 @@ visualize_multiDim_cluster <- function(data, ncol) {
   
   g2 <- ggplot(df_tsne, aes(x = X1, y = X2, color = cluster)) +
     geom_point(size = 3) +
-    labs(title = "t-SNE") +
+    labs(title = paste("t-SNE - ", mytitle)) +
     theme_minimal()
   
   # UMAP
@@ -157,33 +112,46 @@ visualize_multiDim_cluster <- function(data, ncol) {
   
   g3 <- ggplot(df_umap, aes(x = X1, y = X2, color = cluster)) +
     geom_point(size = 3) +
-    labs(title = "UMAP") +
+    labs(title = paste("UMAP - ", mytitle)) +
     theme_minimal()
   
   # Arrange in a row
   grid.arrange(g1, g2, g3, ncol = 3)
 }
 
-cluster_profiles <- function(results) {
-  ggplot(pivot_longer(as_tibble(results$centers,  rownames = "cluster"), 
-                      cols = colnames(results$centers)), 
-         aes(y = name, x = value, fill = cluster)) +
-    geom_bar(stat = "identity") +
-    facet_grid(cols = vars(cluster)) +
-    labs(y = "feature", x = "z-scores", title = "Cluster Profiles") + 
-    guides(fill="none") + 
+cluster_profiles <- function(ts_cluster_result, original_matrix) {
+  cluster_assignments <- ts_cluster_result$cluster
+  
+  # Rebuild data frame: add county, cluster, and reshape
+  df <- as.data.frame(original_matrix) %>%
+    rownames_to_column("county") %>%
+    mutate(cluster = as.factor(cluster_assignments)) %>%
+    pivot_longer(
+      cols = -c(county, cluster),
+      names_to = "date", values_to = "z_score"
+    )
+  
+  # Plot mean z-scores by cluster over time
+  df %>%
+    group_by(cluster, date) %>%
+    summarise(mean_z = mean(z_score, na.rm = TRUE), .groups = "drop") %>%
+    ggplot(aes(x = date, y = mean_z, color = cluster, group = cluster)) +
+    geom_line(size = 1.2) +
+    labs(
+      title = "Cluster Profiles Over Time",
+      x = "Date",
+      y = "Average Z-score",
+      color = "Cluster"
+    ) +
+    theme_minimal() +
     theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
       plot.title = element_text(size = 18, face = "bold"),
       axis.title = element_text(size = 16),
-      axis.text = element_text(size = 14)
+      axis.text = element_text(size = 12)
     )
 }
 
-library(cluster)
-silhouette_score <- function(k, data) {
-  km <- kmeans(data, centers=k, nstart = 10)
-  mean(silhouette(km$cluster, dist(data))[, 3])
-}
 
 ################################## Data Prep ################################## 
 
@@ -198,15 +166,6 @@ texas_clean_df <- texas_time_series_df %>%
     deaths
   ) %>%
   filter(texas_time_series_df$county_name != 'Statewide Unallocated')
-
-# Import the mobility dataset
-mobility_df <- read_csv("Global_Mobility_Report.csv")
-
-#' In order to enable joining the census data to the mobility data I needed a 
-#' lookup table of State name to it's abbreviation. Boy Scouts to the rescue!
-#' https://www.scouting.org/resources/los/states/
-state_to_postal <- read_csv("state_to_postal_code(Sheet1).csv")
-head(state_to_postal)
 
 # Join the State abbreviation dataset to my mobility dataset
 mobility_df <- left_join(
@@ -303,23 +262,6 @@ summary(aggregate_mobility_scaled)
 library(dtwclust)
 conflicts_prefer(dtwclust::as.matrix)
 
-# ts_cluster_data <- aggregate_mobility_scaled %>%
-#   select(all_of(mobility_features))
-# 
-# ts_clusters <- tsclust(ts_cluster_data, type = "partitional", k=4, distance = "dtw")
-# ts_cluster_data$cluster <- as.factor(ts_clusters@cluster)
-# 
-# mobility_clusters <- aggregate_mobility_scaled %>% 
-#   add_column(cluster = factor(ts_clusters@cluster))
-# 
-# 
-# visualize_multiDim_cluster(ts_cluster_data, ncol(ts_cluster_data))
-
-
-
-
-
-
 # Clean and convert to matrix for tsclust
 avg_retail_mat      <- ts_df_to_matrix(aggregate_mobility_scaled, "avg_retail")
 avg_groc_pharm_mat  <- ts_df_to_matrix(aggregate_mobility_scaled, "avg_grocery_and_pharmacy")
@@ -337,72 +279,35 @@ matrix_features <- list(
   avg_residential_mat
 )
 
-# Function to perform clustering on matrix
-ts_cluster <- function(mat) {
-  # Convert matrix rows to list of time series (one per county)
-  feature_list <- apply(mat, 1, function(x) as.numeric(x))  # Each row is a time series for one county
+retail_res      <- run_ts_clustering(avg_retail_mat, "Average Retail")
+gorc_pharm_res  <- run_ts_clustering(avg_groc_pharm_mat, "Average Groc & Pharm")
+park_res        <- run_ts_clustering(avg_parks_mat, "Average Park")
+transit_res     <- run_ts_clustering(avg_transit_mat, "Average Transit")
+workplaces_res  <- run_ts_clustering(avg_workplaces_mat, "Average Workplaces")
+residential_res <- run_ts_clustering(avg_residential_mat, "Average Residential")
+
+cluster_profiles(retail_res,avg_retail_mat)
+
+# Map our results to the county map of Texas
+county_plot <- function(df, title) {
+  counties_polygon_TX_clust <- left_join(counties_polygon_TX, df, join_by(county))
   
-  # Run clustering
-  ts_cluster_results <- tsclust(feature_list, type = "partitional", k = 3, distance = "dtw")
-  
-  # Rebuild the dataframe for visualization
-  clustered_feature_df <- as.data.frame(mat) %>%
-    rownames_to_column("county") %>%
-    mutate(cluster = as.factor(ts_cluster_results@cluster))
-  
-  feature_numeric <- clustered_feature_df %>%
-    select(-county)  # Exclude county for clustering data
-  
-  return(feature_numeric)
+  ggplot(counties_polygon_TX_clust, aes(long, lat)) +
+    geom_polygon(aes(group = group, fill = cluster), color = "white") +
+    scale_fill_manual(
+      values = c("1" = "#1f77b4", "2" = "#ff7f0e", "3" = "#2ca02c"),
+      na.value = "black"  # fill counties with no cluster as black
+    ) +
+    coord_quickmap() +
+    labs(title = paste("Texas County Clustering -", title), fill = "Cluster")
 }
 
-# # Convert to list of time series (one per county)
-# groc_pharm_list <- split(avg_groc_pharm_mat, row(avg_groc_pharm_mat))
-# 
-# # Run clustering
-# groc_pharm_clusters <- tsclust(groc_pharm_list, type = "partitional", k = 3, distance = "dtw")
-# 
-# # Rebuild the dataframe for visualization
-# groc_pharm_df <- as.data.frame(avg_groc_pharm_mat) %>%
-#   rownames_to_column("county") %>%
-#   mutate(cluster = as.factor(groc_pharm_clusters@cluster))
-# 
-# groc_pharm_numeric <- groc_pharm_df %>%
-#   select(-county)
-# 
-# visualize_multiDim_cluster(groc_pharm_numeric, ncol(groc_pharm_numeric))
+c1 <- county_plot(retail_res, "Average Retail")
+c2 <- county_plot(gorc_pharm_res, "Average Groc & Pharm")
+c3 <- county_plot(park_res, "Average Park")
+c4 <- county_plot(transit_res, "Average Transit")
+c5 <- county_plot(workplaces_res, "Average Workplaces")
+c6 <- county_plot(residential_res, "Average Residential")
 
-
-
-
-run_ts_clustering(avg_retail_mat)
-run_ts_clustering(avg_groc_pharm_mat)
-run_ts_clustering(avg_parks_mat)
-run_ts_clustering(avg_transit_mat)
-run_ts_clustering(avg_workplaces_mat)
-run_ts_clustering(avg_residential_mat)
-
-
-###################### Grouping 2: Time Phase Clustering ######################
-
-# library(TSclust)
-# 
-# ts_cluster_data <- aggregate_mobility_scaled %>%
-#   select(all_of(mobility_features))
-# 
-# dissim <- diss(ts_cluster_data, "CORT")
-# hc <- hclust(dissim, method = "ward.D2")
-# plot(hc)  
-# 
-# 
-# 
-# 
-# 
-# 
-# library(tsfeatures)
-# mobility_features <- tsfeatures(time_series_list)
-# kmeans_result <- kmeans(mobility_features, centers = 3)
-# 
-
-
+grid.arrange(c1, c2, c3, c4, c5, c6, ncol = 2)
 
