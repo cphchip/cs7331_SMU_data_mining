@@ -173,3 +173,50 @@ plot_risk_cut_methods <- function(data, risk_var_name, bins = 30) {
 
 plot_risk_cut_methods(texas_census_per_1000, "deaths_per_1000")
 plot_risk_cut_methods(texas_census_per_1000, "confirmed_cases_per_1000")
+
+
+
+# K-means clustering
+set.seed(42)
+kmeans_result <- kmeans(texas_census_per_1000$deaths_per_1000, centers = 3)
+kmeans_centers <- sort(kmeans_result$centers)
+
+county_risk_df <- texas_census_per_1000 %>% 
+  add_column(cluster = factor(kmeans_result$cluster)) %>%
+  select(
+    "county", "deaths_per_1000", "confirmed_cases_per_1000", "cluster"
+  )
+
+counties_polygon_TX_clust <- right_join(counties_polygon_TX, county_risk_df, 
+                                        join_by(county))
+
+ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
+  geom_polygon(aes(group = group, fill = cluster)) +
+  coord_quickmap() + 
+  labs(title = "Texas Map with Age Clustered Counties")
+
+cluster_to_label <- c("low", "high", "med")
+
+county_risk_df <- county_risk_df %>%
+  mutate(risk_level = cluster_to_label[cluster]) %>%
+  select("county", "risk_level")
+
+texas_census_risk <- right_join(texas_census_per_1000,county_risk_df,"county")
+
+
+# Count how many counties are in each cluster
+risk_counts <- texas_census_risk %>%
+  count(risk_level) %>%
+  mutate(label = as.character(n))
+
+# Create a pie chart
+ggplot(risk_counts, aes(x = "", y = n, fill = risk_level)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y") +
+  geom_text(aes(label = label), 
+            position = position_stack(vjust = 0.5), 
+            size = 5, color = "white") +
+  labs(title = "Counties by Risk Level (Clustered)", fill = "Risk Level") +
+  theme_void()
+
+
