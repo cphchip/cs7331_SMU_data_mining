@@ -72,12 +72,9 @@ texas_state_census_df <- texas_state_census_df %>%
   )
 
 # I'll also add opposite features to these:
-texas_state_census_df$male_under_65   <- texas_state_census_df$male_pop 
-                                          - texas_state_census_df$male_over_65
-texas_state_census_df$female_under_65 <- texas_state_census_df$female_pop 
-                                          - texas_state_census_df$female_over_65
-texas_state_census_df$pop_under_65    <- texas_state_census_df$total_pop 
-                                          - texas_state_census_df$pop_over_65
+texas_state_census_df$male_under_65   <- texas_state_census_df$male_pop - texas_state_census_df$male_over_65
+texas_state_census_df$female_under_65 <- texas_state_census_df$female_pop - texas_state_census_df$female_over_65
+texas_state_census_df$pop_under_65    <- texas_state_census_df$total_pop - texas_state_census_df$pop_over_65
 
 #' To make sure all counties are on a level playing field from a density of 
 #' measurement perspective, I'll ensure my data is in a format of "per 1000 
@@ -218,10 +215,22 @@ library(sampling)
 
 set.seed(1000) # for repeatability
 
-# Will use stratified samping because of our class imbalance
 id <- strata(texas_census_risk, stratanames = "risk_level", 
              size = c(30, 30, 30), method = "srswr")
 training_census_balanced <- texas_census_risk |> 
   slice(id$ID_unit) |>
   select(-"county",-"state") # take out unique identifiers
 table(training_census_balanced$risk_level)
+
+
+########################### Support Vector Machine ###########################
+
+library(caret)
+
+svmFit <- training_census_balanced |> 
+  train(risk_level ~.,
+        method = "svmLinear",
+        data = _,
+        tuneLength = 5,
+        trControl = trainControl(method = "cv"))
+svmFit
