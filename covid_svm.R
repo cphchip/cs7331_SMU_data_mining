@@ -217,7 +217,7 @@ ggplot(risk_counts, aes(x = "", y = n, fill = risk_level)) +
 library(sampling)
 
 X <- texas_census_risk %>%
-  select(-"county", -"state", -"risk_level")
+  select(-"county", -"state", -"risk_level", -"confirmed_cases_per_1000")
 
 X_scaled <- X |> scale() |> as_tibble()
 
@@ -230,21 +230,26 @@ summary(X_y)
 
 set.seed(1000) # for repeatability
 
-# Will use stratified samping because of our class imbalance
+# Will use stratified sampling because of our class imbalance
 id <- strata(X_y, stratanames = "y",
-             size = c(30, 30, 30), method = "srswr")
-training_census_balanced <- X_y |>
+             size = c(25, 25, 25), method = "srswr")
+X_y_train <- X_y |>
   slice(id$ID_unit)
 
-table(training_census_balanced$y)
+# Pull out a validation set that doesn't include the training data
+X_y_validation <- X_y %>%
+  filter(!row_number() %in% id$ID_unit)
+
+dim(X_y_train)
+dim(X_y_validation)
 
 
-# ########################### Support Vector Machine ###########################
+############################# Support Vector Machine ###########################
 
 library(caret)
 
 # Run svmFit with hyperparameter Linear
-svmFit_linear <- training_census_balanced |>
+svmFit_linear <- X_y_train |>
   train(y ~.,
         method = "svmLinear",
         data = _,
@@ -253,7 +258,7 @@ svmFit_linear <- training_census_balanced |>
 svmFit_linear
 
 # Run svmFit with hyperparameter Radial
-svmFit_rad <- training_census_balanced |>
+svmFit_rad <- X_y_train |>
   train(y ~.,
         method = "svmRadial",
         data = _,
@@ -263,7 +268,7 @@ svmFit_rad
 
 
 # Run svmFit with hyperparameter Poly
-svmFit_poly <- training_census_balanced |>
+svmFit_poly <- X_y_train |>
   train(y ~.,
         method = "svmPoly",
         data = _,
@@ -271,13 +276,27 @@ svmFit_poly <- training_census_balanced |>
         trControl = trainControl(method = "cv"))
 svmFit_poly
 
-
+# Plot the ranges of Kappa
 resamples <- resamples(list(Linear = svmFit_linear, Radial = svmFit_rad, Poly = svmFit_poly))
 summary(resamples)
 bwplot(resamples, metric = "Kappa")
 
+# Using the trained model, predict the classes of the validation set
+y_pred_linear <- predict(svmFit_linear, newdata = X_y_validation)
+y_pred_rad    <- predict(svmFit_rad, newdata = X_y_validation)
+y_pred_poly   <- predict(svmFit_poly, newdata = X_y_validation)
 
-############################## Naive Bayes ####################################
+# Linear Confusion Matrix
+confusionMatrix(y_pred_linear, X_y_validation$y)
+
+# Radial Confusion Matrix
+confusionMatrix(y_pred_rad, X_y_validation$y)
+
+# Poly Confusion Matrix
+confusionMatrix(y_pred_poly, X_y_validation$y)
+
+
+############################### Naive Bayes ####################################
 
 NBFit <- train(
   x = X_scaled,
@@ -288,3 +307,7 @@ NBFit <- train(
   trControl = trainControl(method = "cv")
 )
 NBFit
+
+y_pred_NB <- predict(NBFit, newdata = X_y_validation)
+
+confusionMatrix(y_pred_NB, X_y_validation$y)

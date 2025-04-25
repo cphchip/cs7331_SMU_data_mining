@@ -210,3 +210,35 @@ ggplot(risk_counts, aes(x = "", y = n, fill = risk_level)) +
             size = 5, color = "white") +
   labs(title = "Counties by Risk Level (Clustered)", fill = "Risk Level") +
   theme_void()
+
+
+######################### Train-Test-Validation Split #########################
+
+library(sampling)
+
+X <- texas_census_risk %>%
+  select(-"county", -"state", -"risk_level", -"confirmed_cases_per_1000")
+
+X_scaled <- X |> scale() |> as_tibble()
+
+y <- texas_census_risk$risk_level
+
+# X_y <- X %>% add_column(y)
+X_y <- X_scaled %>% add_column(y)
+
+summary(X_y)
+
+set.seed(1000) # for repeatability
+
+# Will use stratified sampling because of our class imbalance
+id <- strata(X_y, stratanames = "y",
+             size = c(25, 25, 25), method = "srswr")
+X_y_train <- X_y |>
+  slice(id$ID_unit)
+
+# Pull out a validation set that doesn't include the training data
+X_y_validation <- X_y %>%
+  filter(!row_number() %in% id$ID_unit)
+
+dim(X_y_train)
+dim(X_y_validation)
