@@ -446,6 +446,12 @@ ggplot(counties_polygon_TX, aes(long, lat)) +
   scale_fill_continuous(type = "viridis") +
   labs(title = "Texas death rates by county")
 
+ggplot(counties_polygon_TX, aes(long, lat)) + 
+  geom_polygon(aes(group = group, fill = confirmed_cases_per_1000)) +
+  coord_quickmap() +
+  scale_fill_continuous(type = "viridis") +
+  labs(title = "Texas confirmed case rates by county")
+
 
 ################### Grouping 1: Ethnic makeup of the county ###################
 

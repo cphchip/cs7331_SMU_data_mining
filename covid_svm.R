@@ -1,4 +1,5 @@
 library(tidyverse)
+library(gridExtra)
 
 
 ################################# Data Import ################################# 
@@ -61,7 +62,8 @@ female_elderly_features <- c(
 )
 
 
-# Create new variables for combined age population, drop old ones
+# Create new variables for combined age population, drop old ones.
+# For this effort I just want pop_over_65.
 texas_state_census_df <- texas_state_census_df %>%
   mutate(male_over_65 = rowSums(across(male_elderly_features))) %>%
   mutate(female_over_65 = rowSums(across(female_elderly_features))) %>%
@@ -69,12 +71,12 @@ texas_state_census_df <- texas_state_census_df %>%
   select(
     -male_elderly_features, 
     -female_elderly_features,
+    -male_over_65,
+    -female_over_65
   )
 
-# I'll also add opposite features to these:
-texas_state_census_df$male_under_65   <- texas_state_census_df$male_pop - texas_state_census_df$male_over_65
-texas_state_census_df$female_under_65 <- texas_state_census_df$female_pop - texas_state_census_df$female_over_65
-texas_state_census_df$pop_under_65    <- texas_state_census_df$total_pop - texas_state_census_df$pop_over_65
+# Create opposite variable to hold all population under 65
+texas_state_census_df$pop_under_65 <- texas_state_census_df$total_pop - texas_state_census_df$pop_over_65
 
 #' To make sure all counties are on a level playing field from a density of 
 #' measurement perspective, I'll ensure my data is in a format of "per 1000 
@@ -84,8 +86,7 @@ texas_census_per_1000 <- texas_state_census_df
 cols_to_convert <- c(
   "deaths", "confirmed_cases", "white_pop", "black_pop", "asian_pop", 
   "hispanic_pop", "amerindian_pop", "other_race_pop", "two_or_more_races_pop", 
-  "female_over_65", "male_over_65", "male_pop", "female_pop", "male_under_65", 
-  "female_under_65", "pop_under_65", "households"
+  "male_pop", "female_pop","pop_over_65", "pop_under_65", "households"
 )
 
 # Apply the 'per 1000' conversion to all cols_to_convert
@@ -99,6 +100,7 @@ texas_census_per_1000 <- texas_state_census_df %>%
 
 summary(texas_census_per_1000$deaths_per_1000)
 summary(texas_census_per_1000$confirmed_cases_per_1000)
+
 
 ############################# Determining Classes #############################
 
@@ -164,9 +166,9 @@ plot_risk_cut_methods(texas_census_per_1000, "confirmed_cases_per_1000")
 
 
 
-# K-means clustering
+# Perform K-means clustering as the selected method for class identification
 set.seed(42)
-kmeans_result <- kmeans(texas_census_per_1000$deaths_per_1000, centers = 3)
+kmeans_result <- kmeans(texas_census_per_1000$confirmed_cases_per_1000, centers = 3)
 kmeans_centers <- sort(kmeans_result$centers)
 
 county_risk_df <- texas_census_per_1000 %>% 
@@ -175,7 +177,8 @@ county_risk_df <- texas_census_per_1000 %>%
     "county", "deaths_per_1000", "confirmed_cases_per_1000", "cluster"
   )
 
-counties_polygon_TX_clust <- right_join(counties_polygon_TX, county_risk_df, 
+counties_polygon_TX_clust <- right_join(counties_polygon_TX, 
+                                        county_risk_df, 
                                         join_by(county))
 
 ggplot(counties_polygon_TX_clust, aes(long, lat)) + 
@@ -183,7 +186,7 @@ ggplot(counties_polygon_TX_clust, aes(long, lat)) +
   coord_quickmap() + 
   labs(title = "Texas Map with Age Clustered Counties")
 
-cluster_to_label <- c("low", "high", "med")
+cluster_to_label <- c("med", "high", "low")
 
 county_risk_df <- county_risk_df %>%
   mutate(risk_level = cluster_to_label[cluster]) %>%
@@ -213,24 +216,75 @@ ggplot(risk_counts, aes(x = "", y = n, fill = risk_level)) +
 
 library(sampling)
 
+X <- texas_census_risk %>%
+  select(-"county", -"state", -"risk_level")
+
+X_scaled <- X |> scale() |> as_tibble()
+
+y <- texas_census_risk$risk_level
+
+# X_y <- X %>% add_column(y)
+X_y <- X_scaled %>% add_column(y)
+
+summary(X_y)
+
 set.seed(1000) # for repeatability
 
-id <- strata(texas_census_risk, stratanames = "risk_level", 
+# Will use stratified samping because of our class imbalance
+id <- strata(X_y, stratanames = "y",
              size = c(30, 30, 30), method = "srswr")
-training_census_balanced <- texas_census_risk |> 
-  slice(id$ID_unit) |>
-  select(-"county",-"state") # take out unique identifiers
-table(training_census_balanced$risk_level)
+training_census_balanced <- X_y |>
+  slice(id$ID_unit)
+
+table(training_census_balanced$y)
 
 
-########################### Support Vector Machine ###########################
+# ########################### Support Vector Machine ###########################
 
 library(caret)
 
-svmFit <- training_census_balanced |> 
-  train(risk_level ~.,
+# Run svmFit with hyperparameter Linear
+svmFit_linear <- training_census_balanced |>
+  train(y ~.,
         method = "svmLinear",
         data = _,
         tuneLength = 5,
         trControl = trainControl(method = "cv"))
-svmFit
+svmFit_linear
+
+# Run svmFit with hyperparameter Radial
+svmFit_rad <- training_census_balanced |>
+  train(y ~.,
+        method = "svmRadial",
+        data = _,
+        tuneLength = 5,
+        trControl = trainControl(method = "cv"))
+svmFit_rad
+
+
+# Run svmFit with hyperparameter Poly
+svmFit_poly <- training_census_balanced |>
+  train(y ~.,
+        method = "svmPoly",
+        data = _,
+        tuneLength = 5,
+        trControl = trainControl(method = "cv"))
+svmFit_poly
+
+
+resamples <- resamples(list(Linear = svmFit_linear, Radial = svmFit_rad, Poly = svmFit_poly))
+summary(resamples)
+bwplot(resamples, metric = "Kappa")
+
+
+############################## Naive Bayes ####################################
+
+NBFit <- train(
+  x = X_scaled,
+  y = y,
+  method = "nb",
+  tuneGrid = data.frame(fL = c(.2, .5, 1, 5), 
+                        usekernel = TRUE, adjust = 1),
+  trControl = trainControl(method = "cv")
+)
+NBFit
