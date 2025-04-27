@@ -166,7 +166,10 @@ plot_risk_cut_methods(texas_census_per_1000, "confirmed_cases_per_1000")
 
 
 
-# Perform K-means clustering as the selected method for class identification
+# Using K-means is likely the most legitimate method to cluster the data. 
+# With that decided, we'll perform K-means clustering as the selected method 
+#for class identification and move forward with confirmed_cases_per_1000 as our 
+#definition of low, medium, or high risk.
 set.seed(42)
 kmeans_result <- kmeans(texas_census_per_1000$confirmed_cases_per_1000, centers = 3)
 kmeans_centers <- sort(kmeans_result$centers)
@@ -212,102 +215,135 @@ ggplot(risk_counts, aes(x = "", y = n, fill = risk_level)) +
   theme_void()
 
 
-######################### Train-Test-Validation Split #########################
+############################### Dataset Creation ###############################
 
+library(dplyr)
+library(caret)
 library(sampling)
+conflicts_prefer(caret::confusionMatrix())
 
+# Feature selection
 X <- texas_census_risk %>%
-  select(-"county", -"state", -"risk_level", -"confirmed_cases_per_1000")
+  select(-county, -state, -risk_level, -confirmed_cases_per_1000)
 
 X_scaled <- X |> scale() |> as_tibble()
 
 y <- texas_census_risk$risk_level
 
-# X_y <- X %>% add_column(y)
+# Create initial dataset
 X_y <- X_scaled %>% add_column(y)
 
-summary(X_y)
+############################### Train-Test Split ###############################
 
-set.seed(1000) # for repeatability
-
-# Will use stratified sampling because of our class imbalance
-id <- strata(X_y, stratanames = "y",
-             size = c(25, 25, 25), method = "srswr")
-X_y_train <- X_y |>
-  slice(id$ID_unit)
-
-# Pull out a validation set that doesn't include the training data
-X_y_validation <- X_y %>%
-  filter(!row_number() %in% id$ID_unit)
+# Stratified train-test split
+train_index <- createDataPartition(y, p = 0.7, list = FALSE)
+X_y_train <- X_y[train_index, ]
+X_y_validation <- X_y[-train_index, ]
 
 dim(X_y_train)
 dim(X_y_validation)
 
+############################# upSample Training Set ############################
 
-############################# Support Vector Machine ###########################
+# My dataset is highly imbalanced, to ensure equal sample sizes we'll use upSample
+# to oversample from my smallest class.
+X_y_train <- upSample(
+  x = X_y_train %>% select(-y),
+  y = X_y_train$y,
+  yname = "y"
+)
 
-library(caret)
+# Check balance
+dim(X_y_train)
+table(X_y_train$y)
 
-# Run svmFit with hyperparameter Linear
-svmFit_linear <- X_y_train |>
-  train(y ~.,
-        method = "svmLinear",
-        data = _,
-        tuneLength = 5,
-        trControl = trainControl(method = "cv"))
+############################# Set Cross-Validation #############################
+
+# Define CV settings ONCE
+cv_ctrl <- trainControl(
+  method = "cv",
+  number = 5,            # 5-fold CV
+  verboseIter = TRUE,    # See training progress
+  classProbs = TRUE,     # Useful if you want probabilities later
+  summaryFunction = multiClassSummary  # optional, for better multi-class metrics
+)
+
+############################### Train SVM Models ###############################
+
+set.seed(1000)
+
+# Linear SVM
+svmFit_linear <- train(
+  y ~ ., 
+  data = X_y_train,
+  method = "svmLinear",
+  trControl = cv_ctrl,
+  tuneLength = 5,
+  metric = "Kappa"
+)
 svmFit_linear
 
-# Run svmFit with hyperparameter Radial
-svmFit_rad <- X_y_train |>
-  train(y ~.,
-        method = "svmRadial",
-        data = _,
-        tuneLength = 5,
-        trControl = trainControl(method = "cv"))
+# Radial SVM
+svmFit_rad <- train(
+  y ~ ., 
+  data = X_y_train,
+  method = "svmRadial",
+  trControl = cv_ctrl,
+  tuneLength = 5,
+  metric = "Kappa"
+)
 svmFit_rad
 
-
-# Run svmFit with hyperparameter Poly
-svmFit_poly <- X_y_train |>
-  train(y ~.,
-        method = "svmPoly",
-        data = _,
-        tuneLength = 5,
-        trControl = trainControl(method = "cv"))
+# Polynomial SVM
+svmFit_poly <- train(
+  y ~ ., 
+  data = X_y_train,
+  method = "svmPoly",
+  trControl = cv_ctrl,
+  tuneLength = 5,
+  metric = "Kappa"
+)
 svmFit_poly
 
-# Plot the ranges of Kappa
-resamples <- resamples(list(Linear = svmFit_linear, Radial = svmFit_rad, Poly = svmFit_poly))
-summary(resamples)
-bwplot(resamples, metric = "Kappa")
+############################## Compare SVM Models ##############################
 
-# Using the trained model, predict the classes of the validation set
+resamples_svm <- resamples(list(
+  Linear = svmFit_linear,
+  Radial = svmFit_rad,
+  Poly = svmFit_poly
+))
+
+summary(resamples_svm)
+bwplot(resamples_svm, metric = "Kappa")
+
+######################## Final Validation Set Evaluation ####################### 
+
+# Predict on untouched validation set
 y_pred_linear <- predict(svmFit_linear, newdata = X_y_validation)
 y_pred_rad    <- predict(svmFit_rad, newdata = X_y_validation)
 y_pred_poly   <- predict(svmFit_poly, newdata = X_y_validation)
 
-# Linear Confusion Matrix
+# Confusion Matrices
 confusionMatrix(y_pred_linear, X_y_validation$y)
-
-# Radial Confusion Matrix
 confusionMatrix(y_pred_rad, X_y_validation$y)
-
-# Poly Confusion Matrix
 confusionMatrix(y_pred_poly, X_y_validation$y)
 
+################################# Naive Bayes ################################# 
 
-############################### Naive Bayes ####################################
+set.seed(1000)
 
 NBFit <- train(
-  x = X_scaled,
-  y = y,
+  y = y[train_index],   # Only on training data!
+  x = X_scaled[train_index, ],  
   method = "nb",
-  tuneGrid = data.frame(fL = c(.2, .5, 1, 5), 
-                        usekernel = TRUE, adjust = 1),
-  trControl = trainControl(method = "cv")
+  tuneGrid = expand.grid(fL = c(.2, .5, 1, 5), 
+                         usekernel = TRUE,
+                         adjust = 1),
+  trControl = cv_ctrl,
+  metric = "Kappa"
 )
 NBFit
 
-y_pred_NB <- predict(NBFit, newdata = X_y_validation)
-
+# Predict on validation set
+y_pred_NB <- predict(NBFit, newdata = X_scaled[-train_index, ])
 confusionMatrix(y_pred_NB, X_y_validation$y)
