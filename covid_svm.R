@@ -1,8 +1,11 @@
 library(tidyverse)
 library(gridExtra)
+library(conflicted)
 
 
 ################################# Data Import ################################# 
+
+conflicts_prefer(dplyr::filter)
 
 # Import the initial census dataset
 census_cases_df <- read_csv("COVID-19_cases_plus_census.csv")
@@ -220,7 +223,7 @@ ggplot(risk_counts, aes(x = "", y = n, fill = risk_level)) +
 library(dplyr)
 library(caret)
 library(sampling)
-conflicts_prefer(caret::confusionMatrix())
+conflicted::conflicts_prefer(caret::confusionMatrix())
 
 # Feature selection
 X <- texas_census_risk %>%
