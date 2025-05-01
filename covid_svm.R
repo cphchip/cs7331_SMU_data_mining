@@ -246,34 +246,24 @@ X_y_validation <- X_y[-train_index, ]
 dim(X_y_train)
 dim(X_y_validation)
 
-############################# upSample Training Set ############################
-
-# My dataset is highly imbalanced, to ensure equal sample sizes we'll use upSample
-# to oversample from my smallest class.
-X_y_train <- upSample(
-  x = X_y_train %>% select(-y),
-  y = X_y_train$y,
-  yname = "y"
-)
-
-# Check balance
-dim(X_y_train)
-table(X_y_train$y)
 
 ############################# Set Cross-Validation #############################
 
 # Define CV settings ONCE
 cv_ctrl <- trainControl(
   method = "cv",
-  number = 5,            # 5-fold CV
-  verboseIter = TRUE,    # See training progress
-  classProbs = TRUE,     # Useful if you want probabilities later
-  summaryFunction = multiClassSummary  # optional, for better multi-class metrics
+  number = 5,            
+  verboseIter = TRUE,    
+  classProbs = TRUE,     
+  summaryFunction = multiClassSummary,
+  sampling = "up"
 )
 
 ############################### Train SVM Models ###############################
 
 set.seed(1000)
+
+metric = "Mean_Recall"
 
 # Linear SVM
 svmFit_linear <- train(
@@ -282,7 +272,7 @@ svmFit_linear <- train(
   method = "svmLinear",
   trControl = cv_ctrl,
   tuneLength = 5,
-  metric = "Kappa"
+  metric = metric
 )
 svmFit_linear
 
@@ -293,7 +283,7 @@ svmFit_rad <- train(
   method = "svmRadial",
   trControl = cv_ctrl,
   tuneLength = 5,
-  metric = "Kappa"
+  metric = metric
 )
 svmFit_rad
 
@@ -304,7 +294,7 @@ svmFit_poly <- train(
   method = "svmPoly",
   trControl = cv_ctrl,
   tuneLength = 5,
-  metric = "Kappa"
+  metric = metric
 )
 svmFit_poly
 
@@ -317,7 +307,7 @@ resamples_svm <- resamples(list(
 ))
 
 summary(resamples_svm)
-bwplot(resamples_svm, metric = "Kappa")
+bwplot(resamples_svm, metric = metric)
 
 ######################## Final Validation Set Evaluation ####################### 
 
@@ -336,14 +326,14 @@ confusionMatrix(y_pred_poly, X_y_validation$y)
 set.seed(1000)
 
 NBFit <- train(
-  y = y[train_index],   # Only on training data!
+  y = y[train_index], 
   x = X_scaled[train_index, ],  
   method = "nb",
   tuneGrid = expand.grid(fL = c(.2, .5, 1, 5), 
                          usekernel = TRUE,
                          adjust = 1),
   trControl = cv_ctrl,
-  metric = "Kappa"
+  metric = metric
 )
 NBFit
 
