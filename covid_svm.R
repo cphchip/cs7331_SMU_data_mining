@@ -298,6 +298,7 @@ svmFit_poly <- train(
 )
 svmFit_poly
 
+
 ############################## Compare SVM Models ##############################
 
 resamples_svm <- resamples(list(
@@ -309,8 +310,6 @@ resamples_svm <- resamples(list(
 summary(resamples_svm)
 bwplot(resamples_svm, metric = metric)
 
-######################## Final Validation Set Evaluation ####################### 
-
 # Predict on untouched validation set
 y_pred_linear <- predict(svmFit_linear, newdata = X_y_validation)
 y_pred_rad    <- predict(svmFit_rad, newdata = X_y_validation)
@@ -320,6 +319,16 @@ y_pred_poly   <- predict(svmFit_poly, newdata = X_y_validation)
 confusionMatrix(y_pred_linear, X_y_validation$y)
 confusionMatrix(y_pred_rad, X_y_validation$y)
 confusionMatrix(y_pred_poly, X_y_validation$y)
+
+# Function to get the mean recall values
+get_mean_recall <- function(pred, truth) {
+  mean(confusionMatrix(pred, truth)$byClass[,"Recall"], na.rm = TRUE)
+}
+
+get_mean_recall(y_pred_linear, X_y_validation$y)
+get_mean_recall(y_pred_rad, X_y_validation$y)
+get_mean_recall(y_pred_poly, X_y_validation$y)
+
 
 ################################# Naive Bayes ################################# 
 
@@ -340,3 +349,5 @@ NBFit
 # Predict on validation set
 y_pred_NB <- predict(NBFit, newdata = X_scaled[-train_index, ])
 confusionMatrix(y_pred_NB, X_y_validation$y)
+
+get_mean_recall(y_pred_NB, X_y_validation$y)
