@@ -246,32 +246,20 @@ X_y_validation <- X_y[-train_index, ]
 dim(X_y_train)
 dim(X_y_validation)
 
-############################# upSample Training Set ############################
-
-# My dataset is highly imbalanced, to ensure equal sample sizes we'll use upSample
-# to oversample from my smallest class.
-X_y_train <- upSample(
-  x = X_y_train %>% select(-y),
-  y = X_y_train$y,
-  yname = "y"
-)
-
-# Check balance
-dim(X_y_train)
-table(X_y_train$y)
 
 ############################# Set Cross-Validation #############################
 
 # Define CV settings ONCE
 cv_ctrl <- trainControl(
   method = "cv",
-  number = 5,            # 5-fold CV
-  verboseIter = TRUE,    # See training progress
-  classProbs = TRUE,     # Useful if you want probabilities later
-  summaryFunction = multiClassSummary  # optional, for better multi-class metrics
+  number = 5,            
+  verboseIter = TRUE,    
+  classProbs = TRUE,     
+  summaryFunction = multiClassSummary,
+  sampling = "up"
 )
 
-############################### Train Knn Models ###############################
+############################### Knn Models ###############################
 library(MLmetrics)
 metric <- "Mean_Recall"
 knnFit <- train(
@@ -283,9 +271,43 @@ knnFit <- train(
   metric = metric)
 knnFit
 
-######################## Final Validation Set Evaluation ####################### 
+# Final Validation Set Evaluation
 # Predict on untouched validation set
 y_pred <- predict(knnFit, newdata = X_y_validation)
+
+
+# Confusion Matrices
+confusionMatrix(y_pred, X_y_validation$y)
+
+############################### Logistical Regression ####################
+logRegFit <- train(
+  y ~ ., 
+  data = X_y_train,
+  method = "multinom",
+  tuneLength = 10,
+  trControl = cv_ctrl,
+  metric = metric
+)
+
+y_pred <- predict(logRegFit, newdata = X_y_validation)
+
+
+# Confusion Matrices
+confusionMatrix(y_pred, X_y_validation$y)
+
+
+############################### Neural Network ###########################
+nnetFit <- train(
+  y ~ ., 
+  data = X_y_train,
+  method = "nnet",
+  tuneLength = 10,
+  trControl = cv_ctrl,
+  metric = metric
+)
+nnetFit$finalModel
+
+y_pred <- predict(nnetFit, newdata = X_y_validation)
 
 
 # Confusion Matrices
