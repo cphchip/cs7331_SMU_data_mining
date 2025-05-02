@@ -253,7 +253,7 @@ dim(X_y_validation)
 cv_ctrl <- trainControl(
   method = "cv",
   number = 5,            
-  verboseIter = TRUE,    
+  verboseIter = FALSE,    
   classProbs = TRUE,     
   summaryFunction = multiClassSummary,
   sampling = "up"
@@ -267,8 +267,7 @@ knnFit <- train(
   data = X_y_train,
   method = "knn",
   tuneLength = 10,
-  trControl = cv_ctrl,
-  metric = metric)
+  trControl = cv_ctrl)
 knnFit
 
 # Final Validation Set Evaluation
@@ -279,21 +278,6 @@ y_pred <- predict(knnFit, newdata = X_y_validation)
 # Confusion Matrices
 confusionMatrix(y_pred, X_y_validation$y)
 
-############################### Logistical Regression ####################
-logRegFit <- train(
-  y ~ ., 
-  data = X_y_train,
-  method = "multinom",
-  tuneLength = 10,
-  trControl = cv_ctrl,
-  metric = metric
-)
-
-y_pred <- predict(logRegFit, newdata = X_y_validation)
-
-
-# Confusion Matrices
-confusionMatrix(y_pred, X_y_validation$y)
 
 
 ############################### Neural Network ###########################
@@ -302,8 +286,7 @@ nnetFit <- train(
   data = X_y_train,
   method = "nnet",
   tuneLength = 10,
-  trControl = cv_ctrl,
-  metric = metric
+  trControl = cv_ctrl
 )
 nnetFit$finalModel
 
@@ -312,3 +295,32 @@ y_pred <- predict(nnetFit, newdata = X_y_validation)
 
 # Confusion Matrices
 confusionMatrix(y_pred, X_y_validation$y)
+
+
+install.packages(basemodels)
+library(basemodels)
+baselineFit <- train(
+  method = basemodels::dummyClassifier,
+  y ~ ., 
+  data = X_y_train,
+  strategy = "constant",
+  constant = "med",
+  trControl = cv_ctrl,
+  metric = metric
+)
+baselineFit
+
+resamps <- resamples(list(
+  baseline = baselineFit,
+  kNearestNeighbors = knnFit,
+  logReg = logRegFit,
+  ANN = nnetFit
+))
+
+summary(resamps)
+
+library(lattice)
+bwplot(resamps, layout = c(3, 1))
+
+
+
