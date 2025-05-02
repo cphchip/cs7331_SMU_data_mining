@@ -1,3 +1,10 @@
+pkgs <- c("basemodels", "caret", "FSelector", "lattice", "mlbench", 
+          "palmerpenguins", "party", "pROC", "rpart", 
+          "rpart.plot", "tidyverse", "NeuralNetTools")
+
+pkgs_install <- pkgs[!(pkgs %in% installed.packages()[,"Package"])]
+if(length(pkgs_install)) install.packages(pkgs_install)
+
 library(tidyverse)
 library(gridExtra)
 library(conflicted)
@@ -289,14 +296,32 @@ nnetFit <- train(
   trControl = cv_ctrl
 )
 nnetFit$finalModel
+library(NeuralNetTools)
+plotnet(nnetFit)
 
 y_pred <- predict(nnetFit, newdata = X_y_validation)
 
 
 # Confusion Matrices
 confusionMatrix(y_pred, X_y_validation$y)
+############################### Decision Trees ###########################
+library(rpart)
+library(rpart.plot)
+dtFit <- train(
+  y ~ ., 
+  data = X_y_train,
+  method = "rpart",
+  tuneLength = 10,
+  trControl = cv_ctrl
+)
+dtFit
+rpart.plot(dtFit$finalModel)
+y_pred <- predict(dtFit, newdata = X_y_validation)
 
 
+# Confusion Matrices
+confusionMatrix(y_pred, X_y_validation$y)
+############################### Misc #####################################
 install.packages(basemodels)
 library(basemodels)
 baselineFit <- train(
