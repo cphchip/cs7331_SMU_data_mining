@@ -310,128 +310,230 @@ cv_ctrl <- trainControl(
 )
 
 
-############################### Knn Models ###############################
-
-# library(MLmetrics)
-metric <- "Mean_Recall"
-knnFit <- train(
-  y ~ ., 
-  data = X_y_train,
-  method = "knn",
-  tuneLength = 10,
-  trControl = cv_ctrl)
-knnFit
-
-# Final Validation Set Evaluation
-# Predict on untouched validation set
-y_pred <- predict(knnFit, newdata = X_y_validation)
-
-
-# Confusion Matrices
-confusionMatrix(y_pred, X_y_validation$y)
-
-
-
-
-############################### Train SVM Models ###############################
-
-set.seed(1000)
-
-metric = "Mean_Recall"
-
-# Linear SVM
-svmFit_linear <- train(
-  y ~ ., 
-  data = X_y_train,
-  method = "svmLinear",
-  trControl = cv_ctrl,
-  tuneLength = 5,
-  metric = metric
-)
-svmFit_linear
-
-# Radial SVM
-svmFit_rad <- train(
-  y ~ ., 
-  data = X_y_train,
-  method = "svmRadial",
-  trControl = cv_ctrl,
-  tuneLength = 5,
-  metric = metric
-)
-svmFit_rad
-
-# Polynomial SVM
-svmFit_poly <- train(
-  y ~ ., 
-  data = X_y_train,
-  method = "svmPoly",
-  trControl = cv_ctrl,
-  tuneLength = 5,
-  metric = metric
-)
-svmFit_poly
-
-
-# Compare the SVM Models
-resamples_svm <- resamples(list(
-  Linear = svmFit_linear,
-  Radial = svmFit_rad,
-  Poly = svmFit_poly
-))
-
-summary(resamples_svm)
-bwplot(resamples_svm, metric = metric)
-
-# Predict on untouched validation set
-y_pred_linear <- predict(svmFit_linear, newdata = X_y_validation)
-y_pred_rad    <- predict(svmFit_rad, newdata = X_y_validation)
-y_pred_poly   <- predict(svmFit_poly, newdata = X_y_validation)
-
-# Confusion Matrices
-confusionMatrix(y_pred_linear, X_y_validation$y)
-confusionMatrix(y_pred_rad, X_y_validation$y)
-confusionMatrix(y_pred_poly, X_y_validation$y)
-
+# ############################### Knn Models ###############################
+# 
+# # library(MLmetrics)
+# metric <- "Mean_Recall"
+# knnFit <- train(
+#   y ~ ., 
+#   data = X_y_train,
+#   method = "knn",
+#   tuneLength = 10,
+#   trControl = cv_ctrl)
+# knnFit
+# 
+# # Final Validation Set Evaluation
+# # Predict on untouched validation set
+# y_pred <- predict(knnFit, newdata = X_y_validation)
+# 
+# 
+# # Confusion Matrices
+# confusionMatrix(y_pred, X_y_validation$y)
+# 
+# 
+# 
+# 
+# ############################### Train SVM Models ###############################
+# 
+# set.seed(1000)
+# 
+# metric = "Mean_Recall"
+# 
+# # Linear SVM
+# svmFit_linear <- train(
+#   y ~ ., 
+#   data = X_y_train,
+#   method = "svmLinear",
+#   trControl = cv_ctrl,
+#   tuneLength = 5,
+#   metric = metric
+# )
+# svmFit_linear
+# 
+# # Radial SVM
+# svmFit_rad <- train(
+#   y ~ ., 
+#   data = X_y_train,
+#   method = "svmRadial",
+#   trControl = cv_ctrl,
+#   tuneLength = 5,
+#   metric = metric
+# )
+# svmFit_rad
+# 
+# # Polynomial SVM
+# svmFit_poly <- train(
+#   y ~ ., 
+#   data = X_y_train,
+#   method = "svmPoly",
+#   trControl = cv_ctrl,
+#   tuneLength = 5,
+#   metric = metric
+# )
+# svmFit_poly
+# 
+# 
+# # Compare the SVM Models
+# resamples_svm <- resamples(list(
+#   Linear = svmFit_linear,
+#   Radial = svmFit_rad,
+#   Poly = svmFit_poly
+# ))
+# 
+# summary(resamples_svm)
+# bwplot(resamples_svm, metric = metric)
+# 
+# # Predict on untouched validation set
+# y_pred_linear <- predict(svmFit_linear, newdata = X_y_validation)
+# y_pred_rad    <- predict(svmFit_rad, newdata = X_y_validation)
+# y_pred_poly   <- predict(svmFit_poly, newdata = X_y_validation)
+# 
+# # Confusion Matrices
+# confusionMatrix(y_pred_linear, X_y_validation$y)
+# confusionMatrix(y_pred_rad, X_y_validation$y)
+# confusionMatrix(y_pred_poly, X_y_validation$y)
+# 
 # Function to get the mean recall values
 get_mean_recall <- function(pred, truth) {
   mean(confusionMatrix(pred, truth)$byClass[,"Recall"], na.rm = TRUE)
 }
+# 
+# get_mean_recall(y_pred_linear, X_y_validation$y)
+# get_mean_recall(y_pred_rad, X_y_validation$y)
+# get_mean_recall(y_pred_poly, X_y_validation$y)
+# 
+# 
+# ################################# Naive Bayes ################################# 
+# 
+# set.seed(1000)
+# 
+# NBFit <- train(
+#   y = y[train_index], 
+#   x = X_scaled[train_index, ],  
+#   method = "nb",
+#   tuneGrid = expand.grid(fL = c(.2, .5, 1, 5), 
+#                          usekernel = TRUE,
+#                          adjust = 1),
+#   trControl = cv_ctrl,
+#   metric = metric
+# )
+# NBFit
+# 
+# # Predict on validation set
+# y_pred_NB <- predict(NBFit, newdata = X_scaled[-train_index, ])
+# confusionMatrix(y_pred_NB, X_y_validation$y)
+# 
+# get_mean_recall(y_pred_NB, X_y_validation$y)
+# 
+# 
+# ################################ Comparison ################################ 
+# 
+# resamps <- resamples(list(
+#   NBayes = NBFit,
+#   SVM = svmFit_poly,
+#   kNearest = knnFit
+# ))
+# 
+# library(lattice)
+# bwplot(resamps, metric = c("Mean_Recall", "Accuracy", "Kappa"), layout = c(3, 1))
 
-get_mean_recall(y_pred_linear, X_y_validation$y)
-get_mean_recall(y_pred_rad, X_y_validation$y)
-get_mean_recall(y_pred_poly, X_y_validation$y)
+
+################### Experimenting with PCA ################### 
+
+# Run PCA, data is already scaled
+pca_model <- prcomp(X_scaled, center = TRUE, scale. = FALSE)
+
+# Calculate variance explained
+var_explained <- pca_model$sdev^2 / sum(pca_model$sdev^2)
+cum_var_explained <- cumsum(var_explained)
+
+# Create a data frame for plotting
+pca_df <- data.frame(
+  PC = paste0("PC", 1:length(var_explained)),
+  Variance = var_explained,
+  Cumulative = cum_var_explained
+)
+
+# Plot the scree plot with cumulative line
+library(ggplot2)
+
+ggplot(pca_df, aes(x = seq_along(Variance))) +
+  geom_bar(aes(y = Variance), stat = "identity", fill = "steelblue") +
+  geom_line(aes(y = Cumulative), color = "red", size = 1) +
+  geom_point(aes(y = Cumulative), color = "red") +
+  geom_hline(yintercept = 0.9, linetype = "dashed", color = "darkgreen") +
+  scale_x_continuous(breaks = 1:nrow(pca_df), labels = pca_df$PC) +
+  labs(
+    title = "PCA Variance Explained",
+    x = "Principal Component",
+    y = "Proportion of Variance"
+  ) +
+  theme_minimal()
 
 
-################################# Naive Bayes ################################# 
+# Extract PC1 and PC8 from the PCA scores
+pc_data <- as.data.frame(pca_model$x[, 1:8])  # Keep only PC1 and PC2
+pc_data$y <- y  # Attach your original labels
 
 set.seed(1000)
+train_index <- createDataPartition(pc_data$y, p = 0.7, list = FALSE)
+pc_train <- pc_data[train_index, ]
+pc_validation <- pc_data[-train_index, ]
 
-NBFit <- train(
-  y = y[train_index], 
-  x = X_scaled[train_index, ],  
-  method = "nb",
-  tuneGrid = expand.grid(fL = c(.2, .5, 1, 5), 
-                         usekernel = TRUE,
-                         adjust = 1),
-  trControl = cv_ctrl,
-  metric = metric
+
+
+################################ Decision Tree ################################ 
+
+library(rpart)
+library(rpart.plot)
+
+tree_model <- train(
+  y ~ ., 
+  data = pc_train, 
+  method = "rpart", 
+  trControl = cv_ctrl, 
+  metric = "Mean_Recall",
+  tuneLength = 10
 )
-NBFit
 
-# Predict on validation set
-y_pred_NB <- predict(NBFit, newdata = X_scaled[-train_index, ])
-confusionMatrix(y_pred_NB, X_y_validation$y)
+# Prediction and evaluation
+y_pred_tree <- predict(tree_model, newdata = pc_validation)
+confusionMatrix(y_pred_tree, pc_validation$y)
 
-get_mean_recall(y_pred_NB, X_y_validation$y)
+# Plot the tree
+rpart.plot(tree_model$finalModel, type = 2, extra = 104, fallen.leaves = TRUE, 
+           box.palette = "GnBu", shadow.col = "gray", main = "Decision Tree")
+
+get_mean_recall(y_pred_tree, pc_validation$y)
+
+################################## Neural Network #############################
+
+
+library(NeuralNetTools)
+nnetFit <- train(
+  y ~ ., 
+  data = pc_train,
+  method = "nnet",
+  tuneLength = 10,
+  trControl = cv_ctrl
+)
+nnetFit$finalModel
+
+plotnet(nnetFit)
+
+y_pred_NN <- predict(nnetFit, newdata = pc_validation)
+
+# Confusion Matrices
+confusionMatrix(y_pred_NN, pc_validation$y)
+
+get_mean_recall(y_pred_NN, pc_validation$y)
 
 
 ################################ Comparison ################################ 
 
 resamps <- resamples(list(
-  NBayes = NBFit,
-  SVM = svmFit_poly,
-  kNearest = knnFit
+  NNet = nnetFit,
+  Tree = tree_model
 ))
 
 library(lattice)
