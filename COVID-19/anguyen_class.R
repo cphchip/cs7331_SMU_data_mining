@@ -274,7 +274,8 @@ knnFit <- train(
   data = X_y_train,
   method = "knn",
   tuneLength = 10,
-  trControl = cv_ctrl)
+  trControl = cv_ctrl,
+  metric = metric)
 knnFit
 
 # Final Validation Set Evaluation
@@ -293,7 +294,8 @@ nnetFit <- train(
   data = X_y_train,
   method = "nnet",
   tuneLength = 10,
-  trControl = cv_ctrl
+  trControl = cv_ctrl,
+  metric = metric
 )
 nnetFit$finalModel
 library(NeuralNetTools)
@@ -321,31 +323,8 @@ y_pred <- predict(dtFit, newdata = X_y_validation)
 
 # Confusion Matrices
 confusionMatrix(y_pred, X_y_validation$y)
-############################### Misc #####################################
-install.packages(basemodels)
-library(basemodels)
-baselineFit <- train(
-  method = basemodels::dummyClassifier,
-  y ~ ., 
-  data = X_y_train,
-  strategy = "constant",
-  constant = "med",
-  trControl = cv_ctrl,
-  metric = metric
-)
-baselineFit
 
-resamps <- resamples(list(
-  baseline = baselineFit,
-  kNearestNeighbors = knnFit,
-  logReg = logRegFit,
-  ANN = nnetFit
-))
 
-summary(resamps)
-
-library(lattice)
-bwplot(resamps, layout = c(3, 1))
 
 
 
